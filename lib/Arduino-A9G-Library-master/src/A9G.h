@@ -282,6 +282,15 @@ public:
      */
     bool PublishToTopic(const char topic[], const char msg[]);
 
+    /**
+     * @brief Publishes a message to a topic without waiting for a response.
+     *
+     * @param topic The topic to publish the message to.
+     * @param msg The message to be published.
+     * @return true if the publication is successful, false otherwise.
+     */
+    bool PublishToTopicNoWait(const char topic[], const char msg[]);
+
     /*###############################################*/
     /*********************  SMS  *********************/
     /*###############################################*/

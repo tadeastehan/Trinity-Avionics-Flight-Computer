@@ -841,6 +841,17 @@ bool GSM::PublishToTopic(const char topic[], const char msg[])
         return false;
 }
 
+bool GSM::PublishToTopicNoWait(const char topic[], const char msg[])
+{
+    _gsm->print("AT+MQTTPUB=\"");
+    _gsm->print(topic);
+    _gsm->print("\",\"");
+    _gsm->print(msg);
+    _gsm->println("\",2,0,0");
+
+    return true;
+}
+
 bool GSM::ActivateTE()
 {
     _gsm->println(F("AT+CNMI=0,1,0,0,0"));

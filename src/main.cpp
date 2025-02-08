@@ -255,4 +255,6 @@ void loop()
 
         previousMillis = currentMillis;
     }
+
+    // gsm.PublishToTopic(PUB_TOPIC, "Hello IoT");
 }
