@@ -203,23 +203,25 @@ void setup()
 {
     Serial.begin(115200);
 
+    delay(2000);
+
     setupSD();
 
     // Wait for A9G to be start up after power up
-    // while (millis() < 20000)
-    // {
-    //     yield();
-    // }
+    while (millis() < 20000)
+    {
+        yield();
+    }
 
-    // if (A9GSetup())
-    // {
-    //     Serial.println("***********Read CSQ ***********");
-    //     gsm.ReadCSQ();
+    if (A9GSetup())
+    {
+        Serial.println("***********Read CSQ ***********");
+        gsm.ReadCSQ();
 
-    //     MQTTSetup();
+        MQTTSetup();
 
-    //     GPSSetup();
-    // }
+        GPSSetup();
+    }
 }
 
 void getGPSdata()
@@ -253,4 +255,6 @@ void loop()
 
         previousMillis = currentMillis;
     }
+
+    // gsm.PublishToTopic(PUB_TOPIC, "Hello IoT");
 }
