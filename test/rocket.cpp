@@ -9,8 +9,20 @@
 #include <A9G.h>
 #include <MicroNMEA.h>
 
+// BMP libraries
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include "Adafruit_BMP3XX.h"
+
+// Servo libraries
+#include <ESP32Servo.h>
+
 unsigned long previousMillis = 0;
 const long interval = 1000;
+
+// STATE
+String STATE = "INIT";
+int STATE_NUMBER = 1;
 
 // SD card initialization
 #define SD_CS_PIN SS
@@ -44,6 +56,27 @@ bool gpsFix = false;
 #define CLEAN_SEASSION 0
 #define KEEP_ALIVE 120
 
+// BMP init
+Adafruit_BMP3XX bmp;
+#define SEALEVELPRESSURE_HPA (1013.25)
+float temperature;
+float pressure;
+int altitude;
+float altitude_float;
+
+// Servo initialization
+Servo myservo;
+int openedServoPosition = 19;
+int closedServoPosition = 95;
+int servoPin = 1; // GPIO1
+
+// Before the flight eject pin
+int ejectPin = 2;
+bool ejectPinState; // 0 = closed    1 = open
+
+unsigned long lastMeasurementTime = 0;
+unsigned long currentTime = 0;
+
 void setupSD()
 {
     if (SD.begin(SD_CS_PIN))
@@ -71,6 +104,23 @@ void setupSD()
     else
     {
         Serial.println("SD Status: FAIL");
+    }
+}
+
+void setupBMP()
+{
+    if (bmp.begin_I2C(BMP3XX_DEFAULT_ADDRESS, &Wire))
+    { // hardware I2C mode, can pass in address & alt Wire
+        Serial.println("BMP Status: OK");
+        // Set up oversampling and filter initialization
+        bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
+        bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
+        bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
+        bmp.setOutputDataRate(BMP3_ODR_50_HZ);
+    }
+    else
+    {
+        Serial.println("BMP Status: FAIL");
     }
 }
 
@@ -199,18 +249,39 @@ void MQTTSetup()
     }
 }
 
+void setupServo()
+{
+    // Allow allocation of all timers
+    ESP32PWM::allocateTimer(0);
+    ESP32PWM::allocateTimer(1);
+    ESP32PWM::allocateTimer(2);
+    ESP32PWM::allocateTimer(3);
+    myservo.setPeriodHertz(50);          // standard 50 hz servo
+    myservo.attach(servoPin, 500, 2500); // 500us to 2500us
+
+    myservo.write(openedServoPosition);
+}
+
 void setup()
 {
     Serial.begin(115200);
 
+    pinMode(ejectPin, INPUT_PULLUP);
+
     delay(2000);
 
     setupSD();
+    Wire.begin();
+    Wire.setClock(400000); // 400khz clock
+    setupBMP();
+    setupServo();
 
     // Wait for A9G to be start up after power up
+    Serial.println("Waiting for A9G to start up...");
     while (millis() < 20000)
     {
-        yield();
+        Serial.print(".");
+        delay(1000);
     }
 
     if (A9GSetup())
@@ -237,24 +308,73 @@ void getGPSdata()
     gpsFix = nmea.isValid();
 }
 
+void getBMPdata()
+{
+    temperature = bmp.temperature;
+    pressure = bmp.pressure;
+
+    altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+    altitude_float = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+}
+
+void checkEjectPin()
+{
+    ejectPinState = digitalRead(ejectPin);
+
+    if (ejectPinState == 0 && STATE == "INIT")
+    { // 1 == inserted
+        STATE = "READY";
+        STATE_NUMBER = 2;
+        myservo.write(closedServoPosition);
+    }
+    if (ejectPinState == 1 && STATE == "READY")
+    { // 0 == not inserted
+        STATE = "ARM";
+        STATE_NUMBER = 3;
+    }
+}
+
+void getData()
+{
+    checkEjectPin();
+    getGPSdata();
+    getBMPdata();
+
+    lastMeasurementTime = millis();
+}
+
 void loop()
 {
-    getGPSdata();
+    getData();
 
     unsigned long currentMillis = millis();
 
     if (currentMillis - previousMillis > interval)
     {
-        Serial.print("Latitude: ");
-        Serial.println(latitude / 1000000., 6);
-        Serial.print("Longitude: ");
-        Serial.print(longitude / 1000000., 6);
-        Serial.print("GPS Fix: ");
-        Serial.print(gpsFix ? "OK" : "NO FIX");
-        Serial.println();
+        // Serial.print("Latitude: ");
+        // Serial.print(latitude / 1000000., 6);
+        // Serial.print(" Longitude: ");
+        // Serial.print(longitude / 1000000., 6);
+        // Serial.print(" GPS Fix: ");
+        // Serial.print(gpsFix ? "OK" : "NO FIX");
+        // Serial.print(" Temperature: ");
+        // Serial.print(temperature);
+        // Serial.print(" Pressure: ");
+        // Serial.print(pressure);
+        // Serial.print(" Altitude: ");
+        // Serial.print(altitude);
+        // Serial.println();
+
+        unsigned long timeDiff = millis() - lastMeasurementTime;
+
+        char csv_line[200];
+        sprintf(csv_line, "%lu,%d,%.6f,%.6f,%.2f,%.2f,0,0,0,0,0,0,0,0,0", timeDiff, altitude, latitude / 1000000., longitude / 1000000., pressure, temperature);
+
+        Serial.println(csv_header);
+        Serial.println(csv_line);
 
         previousMillis = currentMillis;
-    }
 
-    // gsm.PublishToTopic(PUB_TOPIC, "Hello IoT");
+        // gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
+    }
 }

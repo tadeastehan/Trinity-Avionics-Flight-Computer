@@ -14,8 +14,15 @@
 #include <Adafruit_Sensor.h>
 #include "Adafruit_BMP3XX.h"
 
+// Servo libraries
+#include <ESP32Servo.h>
+
 unsigned long previousMillis = 0;
 const long interval = 1000;
+
+// STATE
+String STATE = "INIT";
+int STATE_NUMBER = 1;
 
 // SD card initialization
 #define SD_CS_PIN SS
@@ -56,6 +63,16 @@ float temperature;
 float pressure;
 int altitude;
 float altitude_float;
+
+// Servo initialization
+Servo myservo;
+int openedServoPosition = 19;
+int closedServoPosition = 95;
+int servoPin = 1; // GPIO1
+
+// Before the flight eject pin
+int ejectPin = 2;
+bool ejectPinState; // 0 = closed    1 = open
 
 unsigned long lastMeasurementTime = 0;
 unsigned long currentTime = 0;
@@ -232,9 +249,24 @@ void MQTTSetup()
     }
 }
 
+void setupServo()
+{
+    // Allow allocation of all timers
+    ESP32PWM::allocateTimer(0);
+    ESP32PWM::allocateTimer(1);
+    ESP32PWM::allocateTimer(2);
+    ESP32PWM::allocateTimer(3);
+    myservo.setPeriodHertz(50);          // standard 50 hz servo
+    myservo.attach(servoPin, 500, 2500); // 500us to 2500us
+
+    myservo.write(openedServoPosition);
+}
+
 void setup()
 {
     Serial.begin(115200);
+
+    pinMode(ejectPin, INPUT_PULLUP);
 
     delay(2000);
 
@@ -242,11 +274,14 @@ void setup()
     Wire.begin();
     Wire.setClock(400000); // 400khz clock
     setupBMP();
+    setupServo();
 
     // Wait for A9G to be start up after power up
+    Serial.println("Waiting for A9G to start up...");
     while (millis() < 20000)
     {
-        yield();
+        Serial.print(".");
+        delay(1000);
     }
 
     if (A9GSetup())
@@ -282,8 +317,26 @@ void getBMPdata()
     altitude_float = bmp.readAltitude(SEALEVELPRESSURE_HPA);
 }
 
+void checkEjectPin()
+{
+    ejectPinState = digitalRead(ejectPin);
+
+    if (ejectPinState == 0 && STATE == "INIT")
+    { // 1 == inserted
+        STATE = "READY";
+        STATE_NUMBER = 2;
+        myservo.write(closedServoPosition);
+    }
+    if (ejectPinState == 1 && STATE == "READY")
+    { // 0 == not inserted
+        STATE = "ARM";
+        STATE_NUMBER = 3;
+    }
+}
+
 void getData()
 {
+    checkEjectPin();
     getGPSdata();
     getBMPdata();
 
@@ -322,6 +375,6 @@ void loop()
 
         previousMillis = currentMillis;
 
-        gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
+        // gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
     }
 }
