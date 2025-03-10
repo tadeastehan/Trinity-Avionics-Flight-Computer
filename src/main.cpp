@@ -9,6 +9,11 @@
 #include <A9G.h>
 #include <MicroNMEA.h>
 
+// BMP libraries
+#include <Wire.h>
+#include <Adafruit_Sensor.h>
+#include "Adafruit_BMP3XX.h"
+
 unsigned long previousMillis = 0;
 const long interval = 1000;
 
@@ -44,6 +49,17 @@ bool gpsFix = false;
 #define CLEAN_SEASSION 0
 #define KEEP_ALIVE 120
 
+// BMP init
+Adafruit_BMP3XX bmp;
+#define SEALEVELPRESSURE_HPA (1013.25)
+float temperature;
+float pressure;
+int altitude;
+float altitude_float;
+
+unsigned long lastMeasurementTime = 0;
+unsigned long currentTime = 0;
+
 void setupSD()
 {
     if (SD.begin(SD_CS_PIN))
@@ -71,6 +87,23 @@ void setupSD()
     else
     {
         Serial.println("SD Status: FAIL");
+    }
+}
+
+void setupBMP()
+{
+    if (bmp.begin_I2C(BMP3XX_DEFAULT_ADDRESS, &Wire))
+    { // hardware I2C mode, can pass in address & alt Wire
+        Serial.println("BMP Status: OK");
+        // Set up oversampling and filter initialization
+        bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
+        bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
+        bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
+        bmp.setOutputDataRate(BMP3_ODR_50_HZ);
+    }
+    else
+    {
+        Serial.println("BMP Status: FAIL");
     }
 }
 
@@ -206,6 +239,9 @@ void setup()
     delay(2000);
 
     setupSD();
+    Wire.begin();
+    Wire.setClock(400000); // 400khz clock
+    setupBMP();
 
     // Wait for A9G to be start up after power up
     while (millis() < 20000)
@@ -237,24 +273,55 @@ void getGPSdata()
     gpsFix = nmea.isValid();
 }
 
-void loop()
+void getBMPdata()
+{
+    temperature = bmp.temperature;
+    pressure = bmp.pressure;
+
+    altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+    altitude_float = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+}
+
+void getData()
 {
     getGPSdata();
+    getBMPdata();
+
+    lastMeasurementTime = millis();
+}
+
+void loop()
+{
+    getData();
 
     unsigned long currentMillis = millis();
 
     if (currentMillis - previousMillis > interval)
     {
-        Serial.print("Latitude: ");
-        Serial.println(latitude / 1000000., 6);
-        Serial.print("Longitude: ");
-        Serial.print(longitude / 1000000., 6);
-        Serial.print("GPS Fix: ");
-        Serial.print(gpsFix ? "OK" : "NO FIX");
-        Serial.println();
+        // Serial.print("Latitude: ");
+        // Serial.print(latitude / 1000000., 6);
+        // Serial.print(" Longitude: ");
+        // Serial.print(longitude / 1000000., 6);
+        // Serial.print(" GPS Fix: ");
+        // Serial.print(gpsFix ? "OK" : "NO FIX");
+        // Serial.print(" Temperature: ");
+        // Serial.print(temperature);
+        // Serial.print(" Pressure: ");
+        // Serial.print(pressure);
+        // Serial.print(" Altitude: ");
+        // Serial.print(altitude);
+        // Serial.println();
+
+        unsigned long timeDiff = millis() - lastMeasurementTime;
+
+        char csv_line[200];
+        sprintf(csv_line, "%lu,%d,%.6f,%.6f,%.2f,%.2f,0,0,0,0,0,0,0,0,0", timeDiff, altitude, latitude / 1000000., longitude / 1000000., pressure, temperature);
+
+        Serial.println(csv_header);
+        Serial.println(csv_line);
 
         previousMillis = currentMillis;
-    }
 
-    // gsm.PublishToTopic(PUB_TOPIC, "Hello IoT");
+        gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
+    }
 }
