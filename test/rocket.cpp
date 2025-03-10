@@ -375,6 +375,8 @@ void loop()
 
         previousMillis = currentMillis;
 
+        Serial.println(STATE);
+
         // gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
     }
 }
