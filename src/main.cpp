@@ -17,8 +17,8 @@
 // Servo libraries
 #include <ESP32Servo.h>
 
-unsigned long previousMillis = 0;
-const long interval = 1000;
+// Moving average library
+#include <movingAvg.h> // https://github.com/JChristensen/movingAvg
 
 // STATE
 String STATE = "INIT";
@@ -56,6 +56,13 @@ bool gpsFix = false;
 #define CLEAN_SEASSION 0
 #define KEEP_ALIVE 120
 
+// Sending interval
+unsigned long lastSendingTime = 0;
+unsigned long currentSendingTime = 0;
+int sendingIntervalSlow = 1000;
+int sendingIntervalFast = 50;
+unsigned long sendingInterval = sendingIntervalSlow;
+
 // BMP init
 Adafruit_BMP3XX bmp;
 #define SEALEVELPRESSURE_HPA (1013.25)
@@ -76,6 +83,24 @@ bool ejectPinState; // 0 = closed    1 = open
 
 unsigned long lastMeasurementTime = 0;
 unsigned long currentTime = 0;
+
+unsigned long loopCounter = 0;
+
+// Apagee detection
+movingAvg avgAltitude(10);
+int avgAltitude_result;
+int maxAltitude = -10000;       // Initialize to a very low value
+int minAltitude = 10000;        // Initialize to a very high value
+const int descentThreshold = 3; // Threshold to detect descent
+
+// Launch detection
+int launchThreshold = 1; // Minimum altitude change to detect launch
+bool launchThresholdONCE = false;
+
+// Landing detection
+#define LIST_SIZE 10
+int altitudeResults[LIST_SIZE] = {0};
+int currentIndex = 0;
 
 void setupSD()
 {
@@ -122,6 +147,18 @@ void setupBMP()
     {
         Serial.println("BMP Status: FAIL");
     }
+
+    // Spit of garbage data
+    for (int i = 0; i <= 50; i++)
+    {
+        altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+        if (!bmp.performReading())
+        {
+            return;
+        }
+    }
+
+    avgAltitude.begin();
 }
 
 void A9G_eventDispatch(A9G_Event_t *event)
@@ -270,11 +307,11 @@ void setup()
 
     delay(2000);
 
+    setupServo();
     setupSD();
     Wire.begin();
     Wire.setClock(400000); // 400khz clock
     setupBMP();
-    setupServo();
 
     // Wait for A9G to be start up after power up
     Serial.println("Waiting for A9G to start up...");
@@ -317,40 +354,125 @@ void getBMPdata()
     altitude_float = bmp.readAltitude(SEALEVELPRESSURE_HPA);
 }
 
-void checkEjectPin()
+void detectState()
 {
-    ejectPinState = digitalRead(ejectPin);
+    // Read the eject pin state
+    if (STATE == "INIT" || STATE == "READY")
+    {
+        ejectPinState = digitalRead(ejectPin);
 
-    if (ejectPinState == 0 && STATE == "INIT")
-    { // 1 == inserted
-        STATE = "READY";
-        STATE_NUMBER = 2;
-        myservo.write(closedServoPosition);
+        if (ejectPinState == 1 && STATE == "INIT")
+        {
+            STATE = "READY";
+            STATE_NUMBER = 2;
+            myservo.write(closedServoPosition);
+        }
+        if (ejectPinState == 0 && STATE == "READY")
+        {
+            STATE = "ARM";
+            STATE_NUMBER = 3;
+        }
     }
-    if (ejectPinState == 1 && STATE == "READY")
-    { // 0 == not inserted
-        STATE = "ARM";
-        STATE_NUMBER = 3;
+
+    // When the rocket is armed, the launch threshold is set
+    // to the current altitude and the average altitude is calculated
+    if (STATE == "ARM" && !launchThresholdONCE)
+    {
+        Serial.println("ARMED - position zeroed");
+        altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+        launchThreshold += altitude;
+        launchThresholdONCE = true;
+
+        for (int i = 0; i <= 10; i++)
+        {
+            altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+            avgAltitude.reading(altitude);
+        }
+    }
+
+    if (STATE == "ARM" && avgAltitude_result >= launchThreshold)
+    {
+        STATE = "ASCENT";
+        STATE_NUMBER = 4;
+    }
+
+    if (STATE == "DEPLOY")
+    {
+        myservo.write(openedServoPosition);
+        STATE = "DESCENT";
+        STATE_NUMBER = 6;
+    }
+
+    if (STATE == "DESCENT")
+    {
+        loopCounter++;
+    }
+
+    if (STATE != "READY" || STATE != "INIT")
+    {
+        avgAltitude_result = avgAltitude.reading(altitude);
+    }
+
+    if (STATE == "DESCENT" && loopCounter >= 100)
+    {
+        loopCounter = 0;
+
+        // Add the current avgAltitude_result to the list
+        altitudeResults[currentIndex] = avgAltitude_result;
+        currentIndex = (currentIndex + 1) % LIST_SIZE;
+
+        // Check if all values in the list are the same
+        bool allSame = true;
+        for (int i = 1; i < LIST_SIZE; i++)
+        {
+            if (altitudeResults[i] != altitudeResults[0])
+            {
+                allSame = false;
+                break;
+            }
+        }
+
+        // Print a message if all values are the same
+        if (allSame)
+        {
+            STATE = "LANDED";
+            STATE_NUMBER = 7;
+        }
+    }
+
+    // Update maximum altitude during ascent
+    if (STATE == "ASCENT" && avgAltitude_result > maxAltitude)
+    {
+        maxAltitude = avgAltitude_result;
+    }
+
+    // Check for transition from ascent to descent
+    if (STATE == "ASCENT" && avgAltitude_result <= (maxAltitude - descentThreshold))
+    {
+        STATE = "DEPLOY";
+        STATE_NUMBER = 5;
+    }
+
+    if (STATE == "DESCENT" && avgAltitude_result < minAltitude)
+    {
+        minAltitude = avgAltitude_result;
     }
 }
 
 void getData()
 {
-    checkEjectPin();
     getGPSdata();
     getBMPdata();
-
-    lastMeasurementTime = millis();
 }
 
-void loop()
+void sendData()
 {
-    getData();
-
-    unsigned long currentMillis = millis();
-
-    if (currentMillis - previousMillis > interval)
+    currentSendingTime = millis();
+    unsigned long sendingTimeDiff = currentSendingTime - lastSendingTime;
+    if (sendingTimeDiff >= sendingInterval)
     {
+        lastSendingTime = currentSendingTime;
+
         // Serial.print("Latitude: ");
         // Serial.print(latitude / 1000000., 6);
         // Serial.print(" Longitude: ");
@@ -365,18 +487,21 @@ void loop()
         // Serial.print(altitude);
         // Serial.println();
 
-        unsigned long timeDiff = millis() - lastMeasurementTime;
-
         char csv_line[200];
-        sprintf(csv_line, "%lu,%d,%.6f,%.6f,%.2f,%.2f,0,0,0,0,0,0,0,0,0", timeDiff, altitude, latitude / 1000000., longitude / 1000000., pressure, temperature);
+        sprintf(csv_line, "%lu,%d,%.6f,%.6f,%.2f,%.2f,0,0,0,0,0,0,0,0,0", sendingTimeDiff, altitude, latitude / 1000000., longitude / 1000000., pressure, temperature);
 
         Serial.println(csv_header);
         Serial.println(csv_line);
-
-        previousMillis = currentMillis;
 
         Serial.println(STATE);
 
         // gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
     }
+}
+
+void loop()
+{
+    getData();     // Update data from sensors
+    detectState(); // Detect the current state of the rocket
+    sendData();    // Send data to MQTT broker
 }
