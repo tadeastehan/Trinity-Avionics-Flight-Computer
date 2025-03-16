@@ -22,6 +22,7 @@
 
 // STATE
 String STATE = "INIT";
+String LAST_STATE = "INIT";
 int STATE_NUMBER = 1;
 
 // SD card initialization
@@ -96,6 +97,7 @@ const int descentThreshold = 3; // Threshold to detect descent
 // Launch detection
 int launchThreshold = 1; // Minimum altitude change to detect launch
 bool launchThresholdONCE = false;
+int launchAltitude = 0;
 
 // Landing detection
 #define LIST_SIZE 10
@@ -361,13 +363,13 @@ void detectState()
     {
         ejectPinState = digitalRead(ejectPin);
 
-        if (ejectPinState == 1 && STATE == "INIT")
+        if (ejectPinState == 0 && STATE == "INIT")
         {
             STATE = "READY";
             STATE_NUMBER = 2;
             myservo.write(closedServoPosition);
         }
-        if (ejectPinState == 0 && STATE == "READY")
+        if (ejectPinState == 1 && STATE == "READY")
         {
             STATE = "ARM";
             STATE_NUMBER = 3;
@@ -388,6 +390,8 @@ void detectState()
             altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
             avgAltitude.reading(altitude);
         }
+
+        launchAltitude = avgAltitude.reading(altitude);
     }
 
     if (STATE == "ARM" && avgAltitude_result >= launchThreshold)
@@ -457,6 +461,22 @@ void detectState()
     {
         minAltitude = avgAltitude_result;
     }
+
+    if (STATE != LAST_STATE)
+    {
+        if (STATE == "ASCENT" or STATE == "DESCENT" or STATE == "DEPLOY")
+        {
+            sendingInterval = sendingIntervalFast;
+        }
+        else
+        {
+            sendingInterval = sendingIntervalSlow; // READY, LANDED
+        }
+
+        Serial.print("STATE changed: ");
+        Serial.println(STATE);
+        LAST_STATE = STATE;
+    }
 }
 
 void getData()
@@ -490,12 +510,10 @@ void sendData()
         char csv_line[200];
         sprintf(csv_line, "%lu,%d,%.6f,%.6f,%.2f,%.2f,0,0,0,0,0,0,0,0,0", sendingTimeDiff, altitude, latitude / 1000000., longitude / 1000000., pressure, temperature);
 
-        Serial.println(csv_header);
-        Serial.println(csv_line);
-
-        Serial.println(STATE);
-
-        // gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
+        Serial.println(">Time:" + String(sendingTimeDiff) + "," + "Altitude:" + String(altitude) + "," + "Latitude:" + String(latitude / 1000000., 6) + "," + "Longitude:" + String(longitude / 1000000., 6) + "," + "Pressure:" + String(pressure) + "," + "Temperature:" + String(temperature) + "," + "State:" + STATE + "," + "State Number:" + String(STATE_NUMBER));
+        // Serial.println(csv_header);
+        // Serial.println(csv_line);
+        gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
     }
 }
 
