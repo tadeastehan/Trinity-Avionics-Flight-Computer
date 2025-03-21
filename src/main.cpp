@@ -46,6 +46,17 @@ MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
 long latitude, longitude;
 bool gpsFix = false;
 
+#define GPS_EN 1 // GPIO1
+unsigned long SetupA9GInterval = 20000;
+unsigned long LastSetupA9GTime = 0;
+bool A9GRunning = false;
+
+// Wait 20 seconds before setup (non-blocking)
+unsigned long setupStartTime = 0;
+bool setupInProgress = false;
+bool resetInProgress = false;     // New flag for reset phase
+unsigned long resetStartTime = 0; // New timestamp for reset phase
+
 // MQTT initialization
 #define BROKER_NAME "test.mosquitto.org"
 #define PORT 1883
@@ -76,7 +87,7 @@ float altitude_float;
 Servo myservo;
 int openedServoPosition = 19;
 int closedServoPosition = 95;
-int servoPin = 1; // GPIO1
+int servoPin = -1; // GPIO1
 
 // Before the flight eject pin
 int ejectPin = 2;
@@ -212,41 +223,33 @@ void A9G_eventDispatch(A9G_Event_t *event)
     }
 }
 
-bool A9GSetup()
+void A9GInitialSetup()
 {
     Serial0.begin(115200); // Serial0 is the hardware serial port on the A9G
-    delay(100);
     gsm.init(&Serial0);
     gsm.EventDispatch(A9G_eventDispatch);
 
-    // Maximum of 2 seconds to wait for the A9G to be ready
-    if (gsm.bIsReady())
-    {
-        Serial.println("A9G Status: OK");
-        return true;
-    }
-    else
-    {
-        Serial.println("A9G Status: FAIL");
-        return false;
-    }
+    pinMode(GPS_EN, OUTPUT);
+    digitalWrite(GPS_EN, HIGH);
 }
 
-void GPSSetup()
+bool GPSSetup()
 {
     if (gsm.ReleaseGPSUart())
     {
         gps.begin(GPS_BAUD);
 
         Serial.println("GPS Status: OK");
+        return true;
     }
     else
     {
         Serial.println("GPS Status: FAIL");
+        return false;
     }
 }
 
-void MQTTSetup()
+bool MQTTSetup()
 {
     bool status = false;
     if (gsm.AttachToGPRS())
@@ -286,6 +289,7 @@ void MQTTSetup()
     {
         Serial.println("MQTT Status: FAIL");
     }
+    return status;
 }
 
 void setupServo()
@@ -315,23 +319,7 @@ void setup()
     Wire.setClock(400000); // 400khz clock
     setupBMP();
 
-    // Wait for A9G to be start up after power up
-    Serial.println("Waiting for A9G to start up...");
-    while (millis() < 20000)
-    {
-        Serial.print(".");
-        delay(1000);
-    }
-
-    if (A9GSetup())
-    {
-        Serial.println("***********Read CSQ ***********");
-        gsm.ReadCSQ();
-
-        MQTTSetup();
-
-        GPSSetup();
-    }
+    A9GInitialSetup();
 }
 
 void getGPSdata()
@@ -517,9 +505,77 @@ void sendData()
     }
 }
 
+void checkA9G()
+{
+    currentTime = millis();
+    // Check if it's time to check the A9G status
+    if (currentTime - LastSetupA9GTime > SetupA9GInterval && !resetInProgress && !setupInProgress)
+    {
+        LastSetupA9GTime = currentTime;
+        A9GRunning = gsm.bIsReady();
+    }
+
+    // If A9G is not running, start the reset and setup phases
+    if (!A9GRunning)
+    {
+        // If we're not in reset or setup phase, start the reset phase
+        if (!resetInProgress && !setupInProgress)
+        {
+            Serial.println("A9G is not running, starting reset procedure...");
+            digitalWrite(GPS_EN, LOW); // Pull GPS_EN LOW
+            resetStartTime = millis();
+            resetInProgress = true;
+        }
+
+        // If we're in reset phase and 5 seconds have passed, start setup phase
+        if (resetInProgress && (millis() - resetStartTime >= 5000))
+        {
+            Serial.println("Reset phase complete, pulling GPS_EN HIGH");
+            digitalWrite(GPS_EN, HIGH); // Pull GPS_EN HIGH
+            resetInProgress = false;
+            setupStartTime = millis();
+            setupInProgress = true;
+            Serial.println("A9G setup starting, waiting 20 seconds...");
+        }
+    }
+
+    // Check if 20 seconds have passed since setup began
+    if (setupInProgress && (millis() - setupStartTime >= 20000))
+    {
+        Serial.println("Setting up A9G after wait...");
+
+        // Reset the flag for next time
+        setupInProgress = false;
+
+        // Try to initialize A9G
+        if (gsm.bIsReady())
+        {
+            Serial.println("A9G is now ready");
+            Serial.println("***********Read CSQ ***********");
+            gsm.ReadCSQ();
+
+            // Setup MQTT and GPS
+            if (MQTTSetup() && GPSSetup())
+            {
+                Serial.println("MQTT and GPS setup complete");
+                A9GRunning = true;
+            }
+            else
+            {
+                Serial.println("A9G setup failed - MQTT or GPS setup failed");
+            }
+        }
+        else
+        {
+            Serial.println("A9G setup failed");
+        }
+    }
+}
+
 void loop()
 {
     getData();     // Update data from sensors
     detectState(); // Detect the current state of the rocket
     sendData();    // Send data to MQTT broker
+    checkA9G();
 }
