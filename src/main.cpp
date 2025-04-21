@@ -120,6 +120,30 @@ int currentIndex = 0;
 #define BATTERY_VOLTAGE_DIVIDER 5.7 // Voltage divider ratio (R1 + R2) / R2
 float batteryVoltage = 0.0;
 
+// Buzzer
+#define BUZZER_PIN 5
+#define BUZZING_INTERVAL 1000 // Buzzer interval in milliseconds
+static unsigned long lastTimeBuzzer = 0;
+static unsigned long currentTimeBuzzer = 0;
+static bool buzzerState = LOW;
+
+void setupBuzzer()
+{
+    pinMode(BUZZER_PIN, OUTPUT);
+    digitalWrite(BUZZER_PIN, buzzerState); // Turn off the buzzer initially
+}
+
+void buzz()
+{
+    currentTimeBuzzer = millis();
+    if (currentTimeBuzzer - lastTimeBuzzer >= BUZZING_INTERVAL)
+    {
+        lastTimeBuzzer = currentTimeBuzzer;
+        buzzerState = !buzzerState; // Toggle buzzer state
+        digitalWrite(BUZZER_PIN, buzzerState);
+    }
+}
+
 void setupBattery()
 {
     pinMode(BATTERY_PIN, INPUT);
@@ -325,6 +349,7 @@ void setup()
 
     setupServo();
     setupBattery();
+    setupBuzzer();
     setupSD();
     Wire.begin();
     Wire.setClock(400000); // 400khz clock
@@ -470,6 +495,11 @@ void detectState()
     if (STATE == "DESCENT" && avgAltitude_result < minAltitude)
     {
         minAltitude = avgAltitude_result;
+    }
+
+    if (STATE == "DESCENT" or STATE == "LANDED")
+    {
+        buzz();
     }
 
     if (STATE != LAST_STATE)
