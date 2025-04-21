@@ -58,7 +58,7 @@ bool resetInProgress = false;     // New flag for reset phase
 unsigned long resetStartTime = 0; // New timestamp for reset phase
 
 // MQTT initialization
-#define BROKER_NAME "test.mosquitto.org"
+#define BROKER_NAME "broker.hivemq.com"
 #define PORT 1883
 #define USER ""
 #define PASS ""
@@ -87,10 +87,10 @@ float altitude_float;
 Servo myservo;
 int openedServoPosition = 19;
 int closedServoPosition = 95;
-int servoPin = -1; // GPIO1
+int servoPin = 2; // GPIO1
 
 // Before the flight eject pin
-int ejectPin = 2;
+int ejectPin = 7;
 bool ejectPinState; // 0 = closed    1 = open
 
 unsigned long lastMeasurementTime = 0;
@@ -114,6 +114,16 @@ int launchAltitude = 0;
 #define LIST_SIZE 10
 int altitudeResults[LIST_SIZE] = {0};
 int currentIndex = 0;
+
+// Battery voltage
+#define BATTERY_PIN 6
+#define BATTERY_VOLTAGE_DIVIDER 5.7 // Voltage divider ratio (R1 + R2) / R2
+float batteryVoltage = 0.0;
+
+void setupBattery()
+{
+    pinMode(BATTERY_PIN, INPUT);
+}
 
 void setupSD()
 {
@@ -314,6 +324,7 @@ void setup()
     delay(2000);
 
     setupServo();
+    setupBattery();
     setupSD();
     Wire.begin();
     Wire.setClock(400000); // 400khz clock
@@ -342,6 +353,17 @@ void getBMPdata()
 
     altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
     altitude_float = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+}
+
+void getBatteryVoltage()
+{
+    uint32_t Vbatt = 0;
+    for (int i = 0; i < 16; i++)
+    {
+        Vbatt += analogReadMilliVolts(BATTERY_PIN); // Read and accumulate ADC voltage
+    }
+
+    batteryVoltage = BATTERY_VOLTAGE_DIVIDER * (Vbatt / 16.0) / 1000.0; // Convert to voltage
 }
 
 void detectState()
@@ -471,6 +493,7 @@ void getData()
 {
     getGPSdata();
     getBMPdata();
+    getBatteryVoltage();
 }
 
 void sendData()
@@ -480,7 +503,8 @@ void sendData()
     if (sendingTimeDiff >= sendingInterval)
     {
         lastSendingTime = currentSendingTime;
-
+        Serial.print("Battery Voltage: ");
+        Serial.println(batteryVoltage);
         // Serial.print("Latitude: ");
         // Serial.print(latitude / 1000000., 6);
         // Serial.print(" Longitude: ");

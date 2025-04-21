@@ -2,7 +2,7 @@ import paho.mqtt.client as mqtt
 from datetime import datetime
 
 # Define broker and topic
-broker = "test.mosquitto.org"
+broker = "broker.hivemq.com"
 port = 1883
 topic = "iotready/gprs"
 
