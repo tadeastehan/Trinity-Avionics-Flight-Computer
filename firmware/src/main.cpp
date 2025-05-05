@@ -11,8 +11,7 @@
 
 // BMP libraries
 #include <Wire.h>
-#include <Adafruit_Sensor.h>
-#include "Adafruit_BMP3XX.h"
+#include "SparkFunBMP384.h"
 
 // Servo libraries
 #include <ESP32Servo.h>
@@ -76,12 +75,15 @@ int sendingIntervalFast = 50;
 unsigned long sendingInterval = sendingIntervalSlow;
 
 // BMP init
-Adafruit_BMP3XX bmp;
+
+BMP384 pressureSensor;
+uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
+bmp3_data data;
+
 #define SEALEVELPRESSURE_HPA (1013.25)
 float temperature;
 float pressure;
 int altitude;
-float altitude_float;
 
 // Servo initialization
 Servo myservo;
@@ -126,6 +128,12 @@ float batteryVoltage = 0.0;
 static unsigned long lastTimeBuzzer = 0;
 static unsigned long currentTimeBuzzer = 0;
 static bool buzzerState = LOW;
+
+float calculateAltitude(float seaLevel, float atmospheric_pressure)
+{
+    float atmospheric = atmospheric_pressure / 100.0F;
+    return 44330.0 * (1.0 - pow(atmospheric / seaLevel, 0.1903));
+}
 
 void setupBuzzer()
 {
@@ -181,14 +189,26 @@ void setupSD()
 
 void setupBMP()
 {
-    if (bmp.begin_I2C(BMP3XX_DEFAULT_ADDRESS, &Wire))
+    if (pressureSensor.beginI2C(i2cAddress) == BMP3_OK)
     { // hardware I2C mode, can pass in address & alt Wire
         Serial.println("BMP Status: OK");
-        // Set up oversampling and filter initialization
-        bmp.setTemperatureOversampling(BMP3_OVERSAMPLING_8X);
-        bmp.setPressureOversampling(BMP3_OVERSAMPLING_4X);
-        bmp.setIIRFilterCoeff(BMP3_IIR_FILTER_COEFF_3);
-        bmp.setOutputDataRate(BMP3_ODR_50_HZ);
+
+        int8_t err = BMP3_OK;
+
+        bmp3_odr_filter_settings osrMultipliers =
+            {
+                .press_os = BMP3_OVERSAMPLING_4X,
+                .temp_os = BMP3_OVERSAMPLING_8X,
+                .iir_filter = BMP3_IIR_FILTER_COEFF_3,
+            };
+
+        err = pressureSensor.setOSRMultipliers(osrMultipliers);
+        if (err)
+        {
+            // Setting OSR failed, most likely an invalid multiplier (code -3)
+            Serial.print("Error setting OSR! Error code: ");
+            Serial.println(err);
+        }
     }
     else
     {
@@ -198,10 +218,18 @@ void setupBMP()
     // Spit of garbage data
     for (int i = 0; i <= 50; i++)
     {
-        altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
-        if (!bmp.performReading())
+        int8_t err = pressureSensor.getSensorData(&data);
+
+        // Check whether data was acquired successfully
+        if (err == BMP3_OK)
         {
-            return;
+            altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+        }
+        else
+        {
+            // Acquisition failed, most likely a communication error (code -2)
+            Serial.print("Error getting data from sensor! Error code: ");
+            Serial.println(err);
         }
     }
 
@@ -373,11 +401,11 @@ void getGPSdata()
 
 void getBMPdata()
 {
-    temperature = bmp.temperature;
-    pressure = bmp.pressure;
+    pressureSensor.getSensorData(&data);
+    temperature = data.temperature;
+    pressure = data.pressure;
 
-    altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
-    altitude_float = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+    altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
 }
 
 void getBatteryVoltage()
@@ -416,13 +444,15 @@ void detectState()
     if (STATE == "ARM" && !launchThresholdONCE)
     {
         Serial.println("ARMED - position zeroed");
-        altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+        pressureSensor.getSensorData(&data);
+        altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
         launchThreshold += altitude;
         launchThresholdONCE = true;
 
         for (int i = 0; i <= 10; i++)
         {
-            altitude = bmp.readAltitude(SEALEVELPRESSURE_HPA);
+            pressureSensor.getSensorData(&data);
+            altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
             avgAltitude.reading(altitude);
         }
 
@@ -533,8 +563,8 @@ void sendData()
     if (sendingTimeDiff >= sendingInterval)
     {
         lastSendingTime = currentSendingTime;
-        Serial.print("Battery Voltage: ");
-        Serial.println(batteryVoltage);
+        // Serial.print("Battery Voltage: ");
+        // Serial.println(batteryVoltage);
         // Serial.print("Latitude: ");
         // Serial.print(latitude / 1000000., 6);
         // Serial.print(" Longitude: ");

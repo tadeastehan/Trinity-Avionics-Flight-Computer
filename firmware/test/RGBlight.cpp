@@ -2,10 +2,10 @@
 #include <FastLED.h>
 
 // Define the LED pin
-#define LED_PIN 4        // ESP32C6 pin connected to WS2812E
-#define NUM_LEDS 1       // Number of LED units (just one in this case)
-#define LED_TYPE WS2812B // LED strip type (WS2812E is compatible with WS2812B settings)
-#define COLOR_ORDER GRB  // RGB order for these LEDs
+#define LED_PIN 4                       // ESP32C6 pin connected to WS2812E
+#define NUM_LEDS 1                      // Number of LED units (just one in this case)
+#define LED_TYPE WS2811Controller800Khz // LED strip type (WS2812E is compatible with WS2812B settings)
+#define COLOR_ORDER GRB                 // RGB order for these LEDs
 
 // Define the LED array
 CRGB leds[NUM_LEDS];
@@ -21,11 +21,12 @@ CRGB colorArray[] = {
     CRGB::Red,
     CRGB::Green,
     CRGB::Blue,
-    CRGB::Yellow,
-    CRGB::Purple,
-    CRGB::Cyan,
-    CRGB::White,
-    CRGB::Orange};
+    // CRGB::Yellow,
+    // CRGB::Purple,
+    // CRGB::Cyan,
+    // CRGB::White,
+    // CRGB::Orange
+};
 
 // Number of colors in the array
 #define NUM_COLORS (sizeof(colorArray) / sizeof(colorArray[0]))
@@ -144,7 +145,7 @@ void updateSolidRGBLight()
   unsigned long currentTime = millis();
 
   // Change color every 5 seconds
-  if (currentTime - lastColorChangeTime > 5000)
+  if (currentTime - lastColorChangeTime > 1000)
   {
     lastColorChangeTime = currentTime;
 
@@ -152,7 +153,7 @@ void updateSolidRGBLight()
     currentColorIndex = (currentColorIndex + 1) % NUM_COLORS;
 
     // Set the color with 10% brightness (25.5 rounded to 26)
-    FastLED.setBrightness(26); // 10% of 255
+    FastLED.setBrightness(255); // 10% of 255
     leds[0] = colorArray[currentColorIndex];
     FastLED.show();
 
