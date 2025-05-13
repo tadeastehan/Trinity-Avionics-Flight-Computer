@@ -1,0 +1,164 @@
+body {
+  background-color: #2b2b2b;
+  font-family: 'Concert One';
+  font-style: normal;
+}
+
+p,
+label {
+  color: #fec036;
+}
+
+.grid-container {
+  display: grid;
+  grid-template-areas:
+    'item1 item2 item3'
+    'item4 item4 item3'
+    'item5 item6 item7'
+    'item8 item8 item7';
+}
+
+.item1 {
+  grid-area: item1;
+}
+.item2 {
+  grid-area: item2;
+}
+.item3 {
+  grid-area: item3;
+}
+.item4 {
+  grid-area: item4;
+}
+.item5 {
+  grid-area: item5;
+}
+.item6 {
+  grid-area: item6;
+}
+.item7 {
+  margin-left: 20px;
+  grid-area: item7;
+}
+
+.item8 {
+  grid-area: item8;
+}
+
+#altitude_item {
+  margin-top: 25px;
+  margin-left: 80px;
+}
+
+#control-panel-altitude-component-number {
+  float: left;
+}
+
+#control-panel-altitude-component-number {
+  float: left;
+  margin-right: 80px;
+}
+
+#map {
+  width: 640px;
+  height: 640px;
+}
+
+#header_text {
+  text-align: left;
+  font-size: 50px;
+  color: #fec036;
+}
+
+#logo {
+  max-width: 300px;
+  width: 100%;
+  float: left;
+  margin-left: 50px;
+  filter: invert(80%) sepia(70%) saturate(808%) hue-rotate(329deg)
+    brightness(103%) contrast(100%);
+}
+
+/* #control-panel-max-altitude-component-number {
+    margin-top: 25px;
+  } */
+#set-marker-button {
+  float: right;
+  position: absolute;
+  top: 627px;
+  right: 0px;
+  z-index: 4000;
+}
+
+#share-rocket-position {
+  top: 627px;
+  position: absolute;
+  z-index: 4000;
+}
+
+.stage_button_container {
+  display: flex;
+  align-items: center; /* Align buttons vertically center */
+}
+
+.stage_button {
+  color: #2b2b2b;
+  font-size: 20px;
+  font-weight: bold;
+  border: none;
+  border-radius: 50%;
+  margin: 10px;
+  margin-right: 30px;
+  text-align: center;
+  position: relative;
+  width: 133px; /* Fixed width for all buttons */
+  height: 44px; /* Fixed height for all buttons */
+}
+
+.stage_button:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -25px; /* Adjust the distance between the arrow and the button */
+  width: 15px;
+  height: 15px;
+  border-right: 0.2em solid #fec036;
+  border-top: 0.2em solid #fec036;
+  transform: rotate(45deg);
+  margin-top: -7.5px; /* Half of the arrow's height to vertically center it */
+}
+
+.terminal {
+  width: 90%;
+  background: #000;
+  color: #fec036;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.terminal pre {
+  font-size: 30px;
+  margin-left: 50px;
+}
+
+#recieved_text {
+  color: #fec036;
+}
+
+#map {
+  border-radius: 10px;
+}
+
+#qr_code_image {
+  position: absolute;
+  max-width: 300px;
+  width: 100%;
+}
+
+#placeholder-rectangle {
+  size: 471.067, 284.467;
+}
+
+#control-panel-speed {
+  display: none;
+}

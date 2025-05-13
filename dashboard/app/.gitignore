@@ -6,3 +6,4 @@ pyvenv.cfg
 __pycache__/
 share/
 etc/
+preferences.json
