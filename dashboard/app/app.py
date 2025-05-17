@@ -23,19 +23,20 @@ def load_preferences():
     if os.path.exists(preferences_file):
         with open(preferences_file, "r", encoding="utf-8") as file:
             return json.load(file)      
-    return {"center": [49.2388992, 16.5546350]}
+    return {"center": [49.2388992, 16.5546350], "style": "aerial"}
 
 def save_preferences(preferences):
-    print("Saving preferences...")
     with open(preferences_file, "w+", encoding="utf-8") as file:
         json.dump(preferences, file, indent=4, ensure_ascii=False)
 
 def get_center():
     return preferences_json["center"]
 
+def get_style():
+    return preferences_json["style"]
+
 load_env_file()
 preferences_json = load_preferences()
-print(f"Loaded preferences: {preferences_json}")
 
 logo = html.Img(
     className="item1",
@@ -66,7 +67,8 @@ map_div = html.Div(
     children=[
         dl.Map(
             [
-                dl.TileLayer(url=f'https://api.mapy.cz/v1/maptiles/aerial/256/{{z}}/{{x}}/{{y}}?apikey={get_api_key()}'),
+                dl.TileLayer(id="map-tiles",
+                             url=f'https://api.mapy.cz/v1/maptiles/{get_style()}/256/{{z}}/{{x}}/{{y}}?apikey={get_api_key()}'),
                 dl.Marker(id="start-marker", position=get_center(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
                 dl.Marker(id="rocket-marker", position=[49.2388992, 16.5546350], children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
                 dl.Circle(center=[49.2388992, 16.5546350], radius=5, color='rgba(252, 186, 3, 0.5)', id='rocket-radius')
@@ -77,6 +79,16 @@ map_div = html.Div(
         ),
         html.Button('Set Launch Position', id='set-marker-button'),
         html.Button('Share Rocket Position', id='share-rocket-position'),
+        dcc.Dropdown(
+            id='map-style-dropdown',
+            options=[
+                {'label': 'Aerial', 'value': 'aerial'},
+                {'label': 'Basic', 'value': 'basic'},
+                {'label': 'Tourist', 'value': 'outdoor'},
+            ],
+            value='aerial',
+            clearable=False,
+        ),
         html.Div(id="placeholder")
     ]
 )
@@ -166,11 +178,14 @@ app = dash.Dash(__name__,
         {'name': 'viewport', 'content': 'width=device-width, initial-scale=1.0'}
     ],)
 
+app._favicon = r'assets/imgs/favicon.ico'
+app.title = "Space Force Telemetry"
+
 app.layout = html.Div(
     id='root',
     children=[
         html.Link(href='https://fonts.googleapis.com/css?family=Concert One',rel='stylesheet'),
-        html.Div(id='hidden-center', style={'display': 'none'}),
+        #html.Div(id='hidden-center', style={'display': 'none'}),
         html.Div(id='zoom-display', style={'margin-top': '10px'}),
         dcc.Interval(id='map-update-interval', interval=3000, n_intervals=0),
         dcc.Interval(id='graph-update-interval',interval=300, n_intervals=0),
@@ -213,11 +228,19 @@ def update_marker_position(clickData):
             lon = clickData['latlng']['lng']
             preferences_json["center"] = [lat, lon]
             save_preferences(preferences_json)
-            print(preferences_json)
             return [lat, lon]
     return dash.no_update
 
-
+@app.callback(
+    Output('map-tiles', 'url'),
+    Input('map-style-dropdown', 'value')
+)
+def update_map_style(value):
+    if value is not None:
+        print(f"Selected map style: {value}")
+        preferences_json["style"] = value
+        save_preferences(preferences_json)
+    return f'https://api.mapy.cz/v1/maptiles/{value}/256/{{z}}/{{x}}/{{y}}?apikey={get_api_key()}'
 
 if __name__ == '__main__': 
     app.run(debug=True, port=8050)
