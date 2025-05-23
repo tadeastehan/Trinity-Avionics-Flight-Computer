@@ -15,23 +15,16 @@ void setup()
 {
     Wire.begin();
     Serial.begin(115200);
-    while (!Serial)
-    {
-    }
+    while (!Serial) {}
     Serial.println("LSM6DSV16X & BMP384 Qwiic Test");
 
     // LSM6DSV16X init
-    if (!myLSM.begin())
-    {
+    if (!myLSM.begin()) {
         Serial.println("LSM6DSV16X not found!");
-        while (1)
-            ;
+        while (1);
     }
     myLSM.deviceReset();
-    while (!myLSM.getDeviceReset())
-    {
-        delay(1);
-    }
+    while (!myLSM.getDeviceReset()) { delay(1); }
     myLSM.enableBlockDataUpdate();
     myLSM.setAccelDataRate(LSM6DSV16X_ODR_AT_7Hz5);
     myLSM.setAccelFullScale(LSM6DSV16X_16g);
@@ -46,8 +39,7 @@ void setup()
 
     // BMP384 init
     Serial.println("BMP384 Example1 begin!");
-    while (pressureSensor.beginI2C(i2cAddress) != BMP3_OK)
-    {
+    while (pressureSensor.beginI2C(i2cAddress) != BMP3_OK) {
         Serial.println("Error: BMP384 not connected, check wiring and I2C address!");
         delay(1000);
     }
@@ -57,8 +49,7 @@ void setup()
 void loop()
 {
     // LSM6DSV16X: Read and print accelerometer (G) and gyroscope (deg/s) data
-    if (myLSM.checkStatus())
-    {
+    if (myLSM.checkStatus()) {
         myLSM.getAccel(&accelData);
         myLSM.getGyro(&gyroData);
         Serial.print("Accelerometer [G]: X: ");
@@ -78,15 +69,12 @@ void loop()
     // BMP384: Read and print temperature and pressure
     bmp3_data data;
     int8_t err = pressureSensor.getSensorData(&data);
-    if (err == BMP3_OK)
-    {
+    if (err == BMP3_OK) {
         Serial.print("Temperature (C): ");
         Serial.print(data.temperature);
         Serial.print("\tPressure (Pa): ");
         Serial.println(data.pressure);
-    }
-    else
-    {
+    } else {
         Serial.print("Error getting data from BMP384! Error code: ");
         Serial.println(err);
     }
