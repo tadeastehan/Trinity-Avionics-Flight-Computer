@@ -9,9 +9,10 @@
 #include <A9G.h>
 #include <MicroNMEA.h>
 
-// BMP libraries
+// I2C libraries
 #include <Wire.h>
 #include "SparkFunBMP384.h"
+#include "SparkFun_LSM6DSV16X.h"
 
 // Servo libraries
 #include <ESP32Servo.h>
@@ -74,16 +75,21 @@ int sendingIntervalSlow = 1000;
 int sendingIntervalFast = 50;
 unsigned long sendingInterval = sendingIntervalSlow;
 
-// BMP init
-
+// BMP384 sensor
 BMP384 pressureSensor;
-uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
 bmp3_data data;
-
+int8_t err;
+uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
 #define SEALEVELPRESSURE_HPA (1013.25)
 float temperature;
 float pressure;
 int altitude;
+float altitude_float;
+
+// LSM6DSV16X sensor
+SparkFun_LSM6DSV16X myLSM;
+sfe_lsm_data_t accelData;
+sfe_lsm_data_t gyroData;
 
 // Servo initialization
 Servo myservo;
@@ -128,12 +134,6 @@ float batteryVoltage = 0.0;
 static unsigned long lastTimeBuzzer = 0;
 static unsigned long currentTimeBuzzer = 0;
 static bool buzzerState = LOW;
-
-float calculateAltitude(float seaLevel, float atmospheric_pressure)
-{
-    float atmospheric = atmospheric_pressure / 100.0F;
-    return 44330.0 * (1.0 - pow(atmospheric / seaLevel, 0.1903));
-}
 
 void setupBuzzer()
 {
@@ -189,27 +189,57 @@ void setupSD()
 
 void setupBMP()
 {
-    if (pressureSensor.beginI2C(i2cAddress) == BMP3_OK)
+    if (pressureSensor.beginI2C(i2cAddress) != BMP3_OK)
     { // hardware I2C mode, can pass in address & alt Wire
         Serial.println("BMP Status: OK");
 
-        int8_t err = BMP3_OK;
+        err = BMP3_OK;
+
+        // By default, the filter coefficient is set to 0 (no filtering). We can
+        // smooth out the measurements by increasing the coefficient
+        err = pressureSensor.setFilterCoefficient(BMP3_IIR_FILTER_COEFF_3);
+        if (err)
+        {
+            // Setting coefficient failed, most likely an invalid coefficient (code -3)
+            Serial.print("Error setting filter coefficient! Error code: ");
+            Serial.println(err);
+        }
+
+        err = BMP3_OK;
 
         bmp3_odr_filter_settings osrMultipliers =
             {
                 .press_os = BMP3_OVERSAMPLING_4X,
                 .temp_os = BMP3_OVERSAMPLING_8X,
-                .iir_filter = BMP3_IIR_FILTER_COEFF_3,
-                .odr = BMP3_ODR_50_HZ,
             };
-
         err = pressureSensor.setOSRMultipliers(osrMultipliers);
+        // if (err)
+        // {
+        //     // Setting OSR failed, most likely an invalid multiplier (code -3)
+        //     Serial.print("Error setting OSR! Error code: ");
+        //     Serial.println(err);
+        // }
+
+        // err = pressureSensor.setODRFrequency(BMP3_ODR_50_HZ);
+        // if (err != BMP3_OK)
+        // {
+        //     // Setting ODR failed, most likely an invalid frequncy (code -3)
+        //     Serial.print("ODR setting failed! Error code: ");
+        //     Serial.println(err);
+        // }
+        uint8_t odr = 0;
+        err = pressureSensor.getODRFrequency(&odr);
         if (err)
         {
-            // Setting OSR failed, most likely an invalid multiplier (code -3)
-            Serial.print("Error setting OSR! Error code: ");
+            // Interrupt settings failed, most likely a communication error (code -2)
+            Serial.print("Error getting ODR! Error code: ");
             Serial.println(err);
         }
+
+        // The true ODR frequency in Hz is [200 / (2^odr)]
+        Serial.print("ODR Frequency: ");
+        Serial.print(200 / pow(2, odr));
+        Serial.println("Hz");
     }
     else
     {
@@ -219,19 +249,9 @@ void setupBMP()
     // Spit of garbage data
     for (int i = 0; i <= 50; i++)
     {
-        int8_t err = pressureSensor.getSensorData(&data);
-
-        // Check whether data was acquired successfully
-        if (err == BMP3_OK)
-        {
-            altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
-        }
-        else
-        {
-            // Acquisition failed, most likely a communication error (code -2)
-            Serial.print("Error getting data from sensor! Error code: ");
-            Serial.println(err);
-        }
+        pressureSensor.getSensorData(&data);
+        altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+        avgAltitude.reading(altitude);
     }
 
     avgAltitude.begin();
@@ -376,15 +396,15 @@ void setup()
 
     delay(2000);
 
-    setupServo();
-    setupBattery();
-    setupBuzzer();
-    setupSD();
+    // setupServo();
+    // setupBattery();
+    // setupBuzzer();
+    // setupSD();
     Wire.begin();
     Wire.setClock(400000); // 400khz clock
     setupBMP();
 
-    A9GInitialSetup();
+    // A9GInitialSetup();
 }
 
 void getGPSdata()
@@ -402,11 +422,24 @@ void getGPSdata()
 
 void getBMPdata()
 {
-    pressureSensor.getSensorData(&data);
-    temperature = data.temperature;
-    pressure = data.pressure;
+    // Get measurements from the sensor
+    int8_t err = pressureSensor.getSensorData(&data);
 
-    altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+    // Check whether data was acquired successfully
+    if (err == BMP3_OK)
+    {
+        // Acquisistion succeeded, print temperature and pressure
+        temperature = data.temperature;
+        pressure = data.pressure;
+        altitude_float = calculateAltitude(pressure, SEALEVELPRESSURE_HPA);
+        altitude = (int)altitude_float; // Cast to int for altitude
+    }
+    else
+    {
+        // Acquisition failed, most likely a communication error (code -2)
+        Serial.print("Error getting data from sensor! Error code: ");
+        Serial.println(err);
+    }
 }
 
 void getBatteryVoltage()
@@ -454,6 +487,7 @@ void detectState()
         {
             pressureSensor.getSensorData(&data);
             altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+            // Add the current altitude to the moving average
             avgAltitude.reading(altitude);
         }
 
@@ -564,8 +598,8 @@ void sendData()
     if (sendingTimeDiff >= sendingInterval)
     {
         lastSendingTime = currentSendingTime;
-        // Serial.print("Battery Voltage: ");
-        // Serial.println(batteryVoltage);
+        Serial.print("Battery Voltage: ");
+        Serial.println(batteryVoltage);
         // Serial.print("Latitude: ");
         // Serial.print(latitude / 1000000., 6);
         // Serial.print(" Longitude: ");
@@ -659,8 +693,12 @@ void checkA9G()
 
 void loop()
 {
-    getData();     // Update data from sensors
-    detectState(); // Detect the current state of the rocket
-    sendData();    // Send data to MQTT broker
-    checkA9G();
+    getBMPdata();
+    Serial.println("Altitude: " + String(altitude));
+    Serial.println("Temperature: " + String(temperature));
+    Serial.println("Pressure: " + String(pressure));
+    // getData();     // Update data from sensors
+    // detectState(); // Detect the current state of the rocket
+    // sendData();    // Send data to MQTT broker
+    // checkA9G();
 }

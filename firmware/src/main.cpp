@@ -1,94 +1,80 @@
-#include "SparkFun_LSM6DSV16X.h"
-#include <Wire.h>
-#include "SparkFunBMP384.h"
+#include <Arduino.h>
+#include <qwiic.h>
+#include "pudding.h"
 
-// LSM6DSV16X sensor
-SparkFun_LSM6DSV16X myLSM;
-sfe_lsm_data_t accelData;
-sfe_lsm_data_t gyroData;
-
-// BMP384 sensor
-BMP384 pressureSensor;
-uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
+unsigned long lastUpdateTime = 0;
+unsigned long updateInterval = 1000; // Update interval in milliseconds
 
 void setup()
 {
-    Wire.begin();
     Serial.begin(115200);
-    while (!Serial)
-    {
-    }
-    Serial.println("LSM6DSV16X & BMP384 Qwiic Test");
+    delay(2000);
 
-    // LSM6DSV16X init
-    if (!myLSM.begin())
+    if (QWIICsetup())
     {
-        Serial.println("LSM6DSV16X not found!");
-        while (1)
-            ;
+        Serial.println("QWIIC: OK");
     }
-    myLSM.deviceReset();
-    while (!myLSM.getDeviceReset())
+    else
     {
-        delay(1);
+        Serial.println("QWIIC: FAIL");
     }
-    myLSM.enableBlockDataUpdate();
-    myLSM.setAccelDataRate(LSM6DSV16X_ODR_AT_7Hz5);
-    myLSM.setAccelFullScale(LSM6DSV16X_16g);
-    myLSM.setGyroDataRate(LSM6DSV16X_ODR_AT_15Hz);
-    myLSM.setGyroFullScale(LSM6DSV16X_2000dps);
-    myLSM.enableFilterSettling();
-    myLSM.enableAccelLP2Filter();
-    myLSM.setAccelLP2Bandwidth(LSM6DSV16X_XL_STRONG);
-    myLSM.enableGyroLP1Filter();
-    myLSM.setGyroLP1Bandwidth(LSM6DSV16X_GY_ULTRA_LIGHT);
-    Serial.println("LSM6DSV16X Ready.");
-
-    // BMP384 init
-    Serial.println("BMP384 Example1 begin!");
-    while (pressureSensor.beginI2C(i2cAddress) != BMP3_OK)
+    if (puddingSetup())
     {
-        Serial.println("Error: BMP384 not connected, check wiring and I2C address!");
-        delay(1000);
+        Serial.println("Pudding: OK");
     }
-    Serial.println("BMP384 connected!");
+    else
+    {
+        Serial.println("Pudding: FAIL");
+    }
 }
 
 void loop()
 {
-    // LSM6DSV16X: Read and print accelerometer (G) and gyroscope (deg/s) data
-    if (myLSM.checkStatus())
-    {
-        myLSM.getAccel(&accelData);
-        myLSM.getGyro(&gyroData);
-        Serial.print("Accelerometer [G]: X: ");
-        Serial.print(accelData.xData / 1000.0, 3);
-        Serial.print(" Y: ");
-        Serial.print(accelData.yData / 1000.0, 3);
-        Serial.print(" Z: ");
-        Serial.println(accelData.zData / 1000.0, 3);
-        Serial.print("Gyroscope [deg/s]: X: ");
-        Serial.print(gyroData.xData / 100.0, 2);
-        Serial.print(" Y: ");
-        Serial.print(gyroData.yData / 100.0, 2);
-        Serial.print(" Z: ");
-        Serial.println(gyroData.zData / 100.0, 2);
-    }
+    // Update sensor data
+    updateBMP384();
+    updateLSM6DSV16X();
+    updateGPS();
 
-    // BMP384: Read and print temperature and pressure
-    bmp3_data data;
-    int8_t err = pressureSensor.getSensorData(&data);
-    if (err == BMP3_OK)
+    unsigned long currentTime = millis();
+    if (currentTime - lastUpdateTime >= updateInterval)
     {
-        Serial.print("Temperature (C): ");
-        Serial.print(data.temperature);
-        Serial.print("\tPressure (Pa): ");
-        Serial.println(data.pressure);
+        BMPData bmpData = getBMPData();
+        sfe_lsm_data_t accelData = getLSM6DSV16XAccel();
+        sfe_lsm_data_t gyroData = getLSM6DSV16XGyro();
+        nmeaData gpsData = getGPSdata();
+
+        lastUpdateTime = currentTime;
+
+        // Print sensor data
+        Serial.print("BMP384: ");
+        Serial.print(bmpData.temperature, 2);
+        Serial.print(" C, ");
+        Serial.print(bmpData.pressure, 2);
+        Serial.print(" hPa, ");
+        Serial.print(bmpData.altitude, 2);
+        Serial.println(" m");
+
+        Serial.print("LSM6DSV16X Accel: ");
+        Serial.print(accelData.xData, 2);
+        Serial.print(", ");
+        Serial.print(accelData.yData, 2);
+        Serial.print(", ");
+        Serial.println(accelData.zData, 2);
+
+        Serial.print("LSM6DSV16X Gyro: ");
+        Serial.print(gyroData.xData, 2);
+        Serial.print(", ");
+        Serial.print(gyroData.yData, 2);
+        Serial.print(", ");
+        Serial.println(gyroData.zData, 2);
+
+        Serial.print("GPS: Fix: ");
+        Serial.print(gpsData.gpsFix ? "OK" : "NO FIX");
+        Serial.print(", Lat: ");
+        Serial.print(gpsData.latitude / 1000000.0, 6);
+        Serial.print(", Lon: ");
+        Serial.println(gpsData.longitude / 1000000.0, 6);
+
+        puddingUart.PublishToTopic(PUB_TOPIC, "Hello");
     }
-    else
-    {
-        Serial.print("Error getting data from BMP384! Error code: ");
-        Serial.println(err);
-    }
-    delay(1000);
 }

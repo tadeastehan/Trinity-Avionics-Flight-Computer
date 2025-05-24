@@ -396,6 +396,13 @@ public:
      * This function sends the AT+GPSUPGRADE command to the GSM module to release the GPS UART.
      */
     bool ReleaseGPSUart();
+
+    /**
+     * @brief Checks if the current GSM module supports network settings configuration.
+     *
+     * @return true if network settings are supported, false otherwise.
+     */
+    bool SupportedNetworkSettings();
 };
 
 #endif

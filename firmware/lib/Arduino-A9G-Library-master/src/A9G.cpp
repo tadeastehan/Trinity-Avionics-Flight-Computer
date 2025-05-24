@@ -1451,3 +1451,16 @@ bool GSM::ReleaseGPSUart()
         return false;
     }
 }
+
+bool GSM::SupportedNetworkSettings()
+{
+    _gsm->println("AT+CREG?");
+    if (_checkResponse(2000))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
