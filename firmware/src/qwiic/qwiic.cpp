@@ -1,3 +1,6 @@
+
+#include "qwiic.h"
+
 #include <Wire.h>
 #include "SparkFun_LSM6DSV16X.h"
 #include "SparkFunBMP384.h"
@@ -8,14 +11,6 @@
 BMP384 pressureSensor;
 uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
 int8_t err;
-
-// Struct for BMP384 sensor data
-struct BMPData
-{
-    float temperature;
-    float pressure;
-    float altitude;
-};
 
 // Global variable for BMP384 sensor data
 static BMPData bmpData = {0.0f, 0.0f, 0.0f};
@@ -132,7 +127,7 @@ bool updateBMP384()
     }
     else
     {
-        Serial.print("Error getting data from sensor! Error code: ");
+        Serial.print("BMP384: FAIL! Error code: ");
         Serial.println(err);
         return false;
     }

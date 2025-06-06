@@ -1,105 +1,105 @@
 #include <Arduino.h>
 
-// SD card libraries
-#include <SPI.h>
-#include "SdFat.h"
+// // SD card libraries
+// #include <SPI.h>
+// #include "SdFat.h"
 
-// A9G libraries
-#include <SoftwareSerial.h>
-#include <A9G.h>
-#include <MicroNMEA.h>
+// // A9G libraries
+// #include <SoftwareSerial.h>
+// #include <A9G.h>
+// #include <MicroNMEA.h>
 
-// I2C libraries
-#include <Wire.h>
-#include "SparkFunBMP384.h"
-#include "SparkFun_LSM6DSV16X.h"
+// // I2C libraries
+// #include <Wire.h>
+// #include "SparkFunBMP384.h"
+// #include "SparkFun_LSM6DSV16X.h"
 
-// Servo libraries
-#include <ESP32Servo.h>
+// // Servo libraries
+// #include <ESP32Servo.h>
 
 // Moving average library
-#include <movingAvg.h> // https://github.com/JChristensen/movingAvg
+// #include <movingAvg.h> // https://github.com/JChristensen/movingAvg
 
-// STATE
-String STATE = "INIT";
-String LAST_STATE = "INIT";
-int STATE_NUMBER = 1;
+// // STATE
+// String STATE = "INIT";
+// String LAST_STATE = "INIT";
+// int STATE_NUMBER = 1;
 
-// SD card initialization
-#define SD_CS_PIN SS
-SdFat SD;
-int fileCounter = 1;
-String fileName = "data_0.csv";
-File myFile;
-String csv_header = "Time,Altitude,Latitude,Longitude,Pressure,Temp,aX,aY,aZ,gX,gY,gZ,acX,acY,acZ";
+// // SD card initialization
+// #define SD_CS_PIN SS
+// SdFat SD;
+// int fileCounter = 1;
+// String fileName = "data_0.csv";
+// File myFile;
+// String csv_header = "Time,Altitude,Latitude,Longitude,Pressure,Temp,aX,aY,aZ,gX,gY,gZ,acX,acY,acZ";
 
-// A9G initialization
-GSM gsm(1);
+// // A9G initialization
+// GSM gsm(1);
 
-// GPS initialization
-#define GPS_RXPIN 0  // GPIO0
-#define GPS_TXPIN -1 // unused
-#define GPS_BAUD 9600
-SoftwareSerial gps(GPS_RXPIN, GPS_TXPIN);
-char nmeaBuffer[100];
-MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
-long latitude, longitude;
-bool gpsFix = false;
+// // GPS initialization
+// #define GPS_RXPIN 0  // GPIO0
+// #define GPS_TXPIN -1 // unused
+// #define GPS_BAUD 9600
+// SoftwareSerial gps(GPS_RXPIN, GPS_TXPIN);
+// char nmeaBuffer[100];
+// MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
+// long latitude, longitude;
+// bool gpsFix = false;
 
-#define GPS_EN 1 // GPIO1
-unsigned long SetupA9GInterval = 20000;
-unsigned long LastSetupA9GTime = 0;
-bool A9GRunning = false;
+// #define GPS_EN 1 // GPIO1
+// unsigned long SetupA9GInterval = 20000;
+// unsigned long LastSetupA9GTime = 0;
+// bool A9GRunning = false;
 
-// Wait 20 seconds before setup (non-blocking)
-unsigned long setupStartTime = 0;
-bool setupInProgress = false;
-bool resetInProgress = false;     // New flag for reset phase
-unsigned long resetStartTime = 0; // New timestamp for reset phase
+// // Wait 20 seconds before setup (non-blocking)
+// unsigned long setupStartTime = 0;
+// bool setupInProgress = false;
+// bool resetInProgress = false;     // New flag for reset phase
+// unsigned long resetStartTime = 0; // New timestamp for reset phase
 
-// MQTT initialization
-#define BROKER_NAME "broker.hivemq.com"
-#define PORT 1883
-#define USER ""
-#define PASS ""
-#define UNIQUE_ID "roocket"
-#define PUB_TOPIC "iotready/gprs"
-#define SUB_TOPIC "iotready/gprs"
-#define CLEAN_SEASSION 0
-#define KEEP_ALIVE 120
+// // MQTT initialization
+// #define BROKER_NAME "broker.hivemq.com"
+// #define PORT 1883
+// #define USER ""
+// #define PASS ""
+// #define UNIQUE_ID "roocket"
+// #define PUB_TOPIC "iotready/gprs"
+// #define SUB_TOPIC "iotready/gprs"
+// #define CLEAN_SEASSION 0
+// #define KEEP_ALIVE 120
 
 // Sending interval
-unsigned long lastSendingTime = 0;
-unsigned long currentSendingTime = 0;
-int sendingIntervalSlow = 1000;
-int sendingIntervalFast = 50;
-unsigned long sendingInterval = sendingIntervalSlow;
+// unsigned long lastSendingTime = 0;
+// unsigned long currentSendingTime = 0;
+// int sendingIntervalSlow = 1000;
+// int sendingIntervalFast = 50;
+// unsigned long sendingInterval = sendingIntervalSlow;
 
-// BMP384 sensor
-BMP384 pressureSensor;
-bmp3_data data;
-int8_t err;
-uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
-#define SEALEVELPRESSURE_HPA (1013.25)
-float temperature;
-float pressure;
-int altitude;
-float altitude_float;
+// // BMP384 sensor
+// BMP384 pressureSensor;
+// bmp3_data data;
+// int8_t err;
+// uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
+// #define SEALEVELPRESSURE_HPA (1013.25)
+// float temperature;
+// float pressure;
+// int altitude;
+// float altitude_float;
 
-// LSM6DSV16X sensor
-SparkFun_LSM6DSV16X myLSM;
-sfe_lsm_data_t accelData;
-sfe_lsm_data_t gyroData;
+// // LSM6DSV16X sensor
+// SparkFun_LSM6DSV16X myLSM;
+// sfe_lsm_data_t accelData;
+// sfe_lsm_data_t gyroData;
 
 // Servo initialization
-Servo myservo;
-int openedServoPosition = 19;
-int closedServoPosition = 95;
-int servoPin = 2; // GPIO1
+// Servo myservo;
+// int openedServoPosition = 19;
+// int closedServoPosition = 95;
+// int servoPin = 2; // GPIO1
 
-// Before the flight eject pin
-int ejectPin = 7;
-bool ejectPinState; // 0 = closed    1 = open
+// // Before the flight eject pin
+// int ejectPin = 7;
+// bool ejectPinState; // 0 = closed    1 = open
 
 unsigned long lastMeasurementTime = 0;
 unsigned long currentTime = 0;
@@ -123,139 +123,139 @@ int launchAltitude = 0;
 int altitudeResults[LIST_SIZE] = {0};
 int currentIndex = 0;
 
-// Battery voltage
-#define BATTERY_PIN 6
-#define BATTERY_VOLTAGE_DIVIDER 5.7 // Voltage divider ratio (R1 + R2) / R2
-float batteryVoltage = 0.0;
+// // Battery voltage
+// #define BATTERY_PIN 6
+// #define BATTERY_VOLTAGE_DIVIDER 5.7 // Voltage divider ratio (R1 + R2) / R2
+// float batteryVoltage = 0.0;
 
-// Buzzer
-#define BUZZER_PIN 5
-#define BUZZING_INTERVAL 1000 // Buzzer interval in milliseconds
-static unsigned long lastTimeBuzzer = 0;
-static unsigned long currentTimeBuzzer = 0;
-static bool buzzerState = LOW;
+// // Buzzer
+// #define BUZZER_PIN 5
+// #define BUZZING_INTERVAL 1000 // Buzzer interval in milliseconds
+// static unsigned long lastTimeBuzzer = 0;
+// static unsigned long currentTimeBuzzer = 0;
+// static bool buzzerState = LOW;
 
-void setupBuzzer()
-{
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, buzzerState); // Turn off the buzzer initially
-}
+// void setupBuzzer()
+// {
+//     pinMode(BUZZER_PIN, OUTPUT);
+//     digitalWrite(BUZZER_PIN, buzzerState); // Turn off the buzzer initially
+// }
 
-void buzz()
-{
-    currentTimeBuzzer = millis();
-    if (currentTimeBuzzer - lastTimeBuzzer >= BUZZING_INTERVAL)
-    {
-        lastTimeBuzzer = currentTimeBuzzer;
-        buzzerState = !buzzerState; // Toggle buzzer state
-        digitalWrite(BUZZER_PIN, buzzerState);
-    }
-}
+// void buzz()
+// {
+//     currentTimeBuzzer = millis();
+//     if (currentTimeBuzzer - lastTimeBuzzer >= BUZZING_INTERVAL)
+//     {
+//         lastTimeBuzzer = currentTimeBuzzer;
+//         buzzerState = !buzzerState; // Toggle buzzer state
+//         digitalWrite(BUZZER_PIN, buzzerState);
+//     }
+// }
 
-void setupBattery()
-{
-    pinMode(BATTERY_PIN, INPUT);
-}
+// void setupBattery()
+// {
+//     pinMode(BATTERY_PIN, INPUT);
+// }
 
-void setupSD()
-{
-    if (SD.begin(SD_CS_PIN))
-    {
-        while (SD.exists(fileName))
-        {
-            fileName = "data_" + String(fileCounter) + ".csv";
-            fileCounter++;
-            Serial.println(fileName);
-        }
-        myFile = SD.open(fileName, FILE_WRITE);
-        if (myFile)
-        {
-            myFile.print(csv_header);
-            myFile.print("\n");
-            myFile.close();
+// void setupSD()
+// {
+//     if (SD.begin(SD_CS_PIN))
+//     {
+//         while (SD.exists(fileName))
+//         {
+//             fileName = "data_" + String(fileCounter) + ".csv";
+//             fileCounter++;
+//             Serial.println(fileName);
+//         }
+//         myFile = SD.open(fileName, FILE_WRITE);
+//         if (myFile)
+//         {
+//             myFile.print(csv_header);
+//             myFile.print("\n");
+//             myFile.close();
 
-            Serial.println("SD Status: OK");
-        }
-        else
-        {
-            Serial.println("SD Status: FAIL");
-        }
-    }
-    else
-    {
-        Serial.println("SD Status: FAIL");
-    }
-}
+//             Serial.println("SD Status: OK");
+//         }
+//         else
+//         {
+//             Serial.println("SD Status: FAIL");
+//         }
+//     }
+//     else
+//     {
+//         Serial.println("SD Status: FAIL");
+//     }
+// }
 
-void setupBMP()
-{
-    if (pressureSensor.beginI2C(i2cAddress) != BMP3_OK)
-    { // hardware I2C mode, can pass in address & alt Wire
-        Serial.println("BMP Status: OK");
+// void setupBMP()
+// {
+//     if (pressureSensor.beginI2C(i2cAddress) != BMP3_OK)
+//     { // hardware I2C mode, can pass in address & alt Wire
+//         Serial.println("BMP Status: OK");
 
-        err = BMP3_OK;
+//         err = BMP3_OK;
 
-        // By default, the filter coefficient is set to 0 (no filtering). We can
-        // smooth out the measurements by increasing the coefficient
-        err = pressureSensor.setFilterCoefficient(BMP3_IIR_FILTER_COEFF_3);
-        if (err)
-        {
-            // Setting coefficient failed, most likely an invalid coefficient (code -3)
-            Serial.print("Error setting filter coefficient! Error code: ");
-            Serial.println(err);
-        }
+//         // By default, the filter coefficient is set to 0 (no filtering). We can
+//         // smooth out the measurements by increasing the coefficient
+//         err = pressureSensor.setFilterCoefficient(BMP3_IIR_FILTER_COEFF_3);
+//         if (err)
+//         {
+//             // Setting coefficient failed, most likely an invalid coefficient (code -3)
+//             Serial.print("Error setting filter coefficient! Error code: ");
+//             Serial.println(err);
+//         }
 
-        err = BMP3_OK;
+//         err = BMP3_OK;
 
-        bmp3_odr_filter_settings osrMultipliers =
-            {
-                .press_os = BMP3_OVERSAMPLING_4X,
-                .temp_os = BMP3_OVERSAMPLING_8X,
-            };
-        err = pressureSensor.setOSRMultipliers(osrMultipliers);
-        // if (err)
-        // {
-        //     // Setting OSR failed, most likely an invalid multiplier (code -3)
-        //     Serial.print("Error setting OSR! Error code: ");
-        //     Serial.println(err);
-        // }
+//         bmp3_odr_filter_settings osrMultipliers =
+//             {
+//                 .press_os = BMP3_OVERSAMPLING_4X,
+//                 .temp_os = BMP3_OVERSAMPLING_8X,
+//             };
+//         err = pressureSensor.setOSRMultipliers(osrMultipliers);
+//         // if (err)
+//         // {
+//         //     // Setting OSR failed, most likely an invalid multiplier (code -3)
+//         //     Serial.print("Error setting OSR! Error code: ");
+//         //     Serial.println(err);
+//         // }
 
-        // err = pressureSensor.setODRFrequency(BMP3_ODR_50_HZ);
-        // if (err != BMP3_OK)
-        // {
-        //     // Setting ODR failed, most likely an invalid frequncy (code -3)
-        //     Serial.print("ODR setting failed! Error code: ");
-        //     Serial.println(err);
-        // }
-        uint8_t odr = 0;
-        err = pressureSensor.getODRFrequency(&odr);
-        if (err)
-        {
-            // Interrupt settings failed, most likely a communication error (code -2)
-            Serial.print("Error getting ODR! Error code: ");
-            Serial.println(err);
-        }
+//         // err = pressureSensor.setODRFrequency(BMP3_ODR_50_HZ);
+//         // if (err != BMP3_OK)
+//         // {
+//         //     // Setting ODR failed, most likely an invalid frequncy (code -3)
+//         //     Serial.print("ODR setting failed! Error code: ");
+//         //     Serial.println(err);
+//         // }
+//         uint8_t odr = 0;
+//         err = pressureSensor.getODRFrequency(&odr);
+//         if (err)
+//         {
+//             // Interrupt settings failed, most likely a communication error (code -2)
+//             Serial.print("Error getting ODR! Error code: ");
+//             Serial.println(err);
+//         }
 
-        // The true ODR frequency in Hz is [200 / (2^odr)]
-        Serial.print("ODR Frequency: ");
-        Serial.print(200 / pow(2, odr));
-        Serial.println("Hz");
-    }
-    else
-    {
-        Serial.println("BMP Status: FAIL");
-    }
+//         // The true ODR frequency in Hz is [200 / (2^odr)]
+//         Serial.print("ODR Frequency: ");
+//         Serial.print(200 / pow(2, odr));
+//         Serial.println("Hz");
+//     }
+//     else
+//     {
+//         Serial.println("BMP Status: FAIL");
+//     }
 
-    // Spit of garbage data
-    for (int i = 0; i <= 50; i++)
-    {
-        pressureSensor.getSensorData(&data);
-        altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
-        avgAltitude.reading(altitude);
-    }
+//     // Spit of garbage data
+//     for (int i = 0; i <= 50; i++)
+//     {
+//         pressureSensor.getSensorData(&data);
+//         altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+//         avgAltitude.reading(altitude);
+//     }
 
-    avgAltitude.begin();
-}
+//     avgAltitude.begin();
+// }
 
 void A9G_eventDispatch(A9G_Event_t *event)
 {
@@ -456,132 +456,132 @@ void getBatteryVoltage()
 void detectState()
 {
     // Read the eject pin state
-    if (STATE == "INIT" || STATE == "READY")
-    {
-        ejectPinState = digitalRead(ejectPin);
+    // if (STATE == "INIT" || STATE == "READY")
+    // {
+    //     ejectPinState = digitalRead(ejectPin);
 
-        if (ejectPinState == 0 && STATE == "INIT")
-        {
-            STATE = "READY";
-            STATE_NUMBER = 2;
-            myservo.write(closedServoPosition);
-        }
-        if (ejectPinState == 1 && STATE == "READY")
-        {
-            STATE = "ARM";
-            STATE_NUMBER = 3;
-        }
-    }
+    //     if (ejectPinState == 0 && STATE == "INIT")
+    //     {
+    //         STATE = "READY";
+    //         STATE_NUMBER = 2;
+    //         myservo.write(closedServoPosition);
+    //     }
+    //     if (ejectPinState == 1 && STATE == "READY")
+    //     {
+    //         STATE = "ARM";
+    //         STATE_NUMBER = 3;
+    //     }
+    // }
 
     // When the rocket is armed, the launch threshold is set
     // to the current altitude and the average altitude is calculated
-    if (STATE == "ARM" && !launchThresholdONCE)
-    {
-        Serial.println("ARMED - position zeroed");
-        pressureSensor.getSensorData(&data);
-        altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
-        launchThreshold += altitude;
-        launchThresholdONCE = true;
+    // if (STATE == "ARM" && !launchThresholdONCE)
+    // {
+    //     Serial.println("ARMED - position zeroed");
+    //     pressureSensor.getSensorData(&data);
+    //     altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+    //     launchThreshold += altitude;
+    //     launchThresholdONCE = true;
 
-        for (int i = 0; i <= 10; i++)
-        {
-            pressureSensor.getSensorData(&data);
-            altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
-            // Add the current altitude to the moving average
-            avgAltitude.reading(altitude);
-        }
+    //     for (int i = 0; i <= 10; i++)
+    //     {
+    //         pressureSensor.getSensorData(&data);
+    //         altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+    //         // Add the current altitude to the moving average
+    //         avgAltitude.reading(altitude);
+    //     }
 
-        launchAltitude = avgAltitude.reading(altitude);
-    }
+    //     launchAltitude = avgAltitude.reading(altitude);
+    // }
 
-    if (STATE == "ARM" && avgAltitude_result >= launchThreshold)
-    {
-        STATE = "ASCENT";
-        STATE_NUMBER = 4;
-    }
+    // if (STATE == "ARM" && avgAltitude_result >= launchThreshold)
+    // {
+    //     STATE = "ASCENT";
+    //     STATE_NUMBER = 4;
+    // }
 
-    if (STATE == "DEPLOY")
-    {
-        myservo.write(openedServoPosition);
-        STATE = "DESCENT";
-        STATE_NUMBER = 6;
-    }
+    // if (STATE == "DEPLOY")
+    // {
+    //     myservo.write(openedServoPosition);
+    //     STATE = "DESCENT";
+    //     STATE_NUMBER = 6;
+    // }
 
-    if (STATE == "DESCENT")
-    {
-        loopCounter++;
-    }
+    // if (STATE == "DESCENT")
+    // {
+    //     loopCounter++;
+    // }
 
-    if (STATE != "READY" || STATE != "INIT")
-    {
-        avgAltitude_result = avgAltitude.reading(altitude);
-    }
+    // if (STATE != "READY" || STATE != "INIT")
+    // {
+    //     avgAltitude_result = avgAltitude.reading(altitude);
+    // }
 
-    if (STATE == "DESCENT" && loopCounter >= 100)
-    {
-        loopCounter = 0;
+    // if (STATE == "DESCENT" && loopCounter >= 100)
+    // {
+    //     loopCounter = 0;
 
-        // Add the current avgAltitude_result to the list
-        altitudeResults[currentIndex] = avgAltitude_result;
-        currentIndex = (currentIndex + 1) % LIST_SIZE;
+    //     // Add the current avgAltitude_result to the list
+    //     altitudeResults[currentIndex] = avgAltitude_result;
+    //     currentIndex = (currentIndex + 1) % LIST_SIZE;
 
-        // Check if all values in the list are the same
-        bool allSame = true;
-        for (int i = 1; i < LIST_SIZE; i++)
-        {
-            if (altitudeResults[i] != altitudeResults[0])
-            {
-                allSame = false;
-                break;
-            }
-        }
+    //     // Check if all values in the list are the same
+    //     bool allSame = true;
+    //     for (int i = 1; i < LIST_SIZE; i++)
+    //     {
+    //         if (altitudeResults[i] != altitudeResults[0])
+    //         {
+    //             allSame = false;
+    //             break;
+    //         }
+    //     }
 
-        // Print a message if all values are the same
-        if (allSame)
-        {
-            STATE = "LANDED";
-            STATE_NUMBER = 7;
-        }
-    }
+    //     // Print a message if all values are the same
+    //     if (allSame)
+    //     {
+    //         STATE = "LANDED";
+    //         STATE_NUMBER = 7;
+    //     }
+    // }
 
     // Update maximum altitude during ascent
-    if (STATE == "ASCENT" && avgAltitude_result > maxAltitude)
-    {
-        maxAltitude = avgAltitude_result;
-    }
+    // if (STATE == "ASCENT" && avgAltitude_result > maxAltitude)
+    // {
+    //     maxAltitude = avgAltitude_result;
+    // }
 
     // Check for transition from ascent to descent
-    if (STATE == "ASCENT" && avgAltitude_result <= (maxAltitude - descentThreshold))
-    {
-        STATE = "DEPLOY";
-        STATE_NUMBER = 5;
-    }
+    // if (STATE == "ASCENT" && avgAltitude_result <= (maxAltitude - descentThreshold))
+    // {
+    //     STATE = "DEPLOY";
+    //     STATE_NUMBER = 5;
+    // }
 
-    if (STATE == "DESCENT" && avgAltitude_result < minAltitude)
-    {
-        minAltitude = avgAltitude_result;
-    }
+    // if (STATE == "DESCENT" && avgAltitude_result < minAltitude)
+    // {
+    //     minAltitude = avgAltitude_result;
+    // }
 
-    if (STATE == "DESCENT" or STATE == "LANDED")
-    {
-        buzz();
-    }
+    // if (STATE == "DESCENT" or STATE == "LANDED")
+    // {
+    //     buzz();
+    // }
 
-    if (STATE != LAST_STATE)
-    {
-        if (STATE == "ASCENT" or STATE == "DESCENT" or STATE == "DEPLOY")
-        {
-            sendingInterval = sendingIntervalFast;
-        }
-        else
-        {
-            sendingInterval = sendingIntervalSlow; // READY, LANDED
-        }
+    // if (STATE != LAST_STATE)
+    // {
+    //     if (STATE == "ASCENT" or STATE == "DESCENT" or STATE == "DEPLOY")
+    //     {
+    //         sendingInterval = sendingIntervalFast;
+    //     }
+    //     else
+    //     {
+    //         sendingInterval = sendingIntervalSlow; // READY, LANDED
+    //     }
 
-        Serial.print("STATE changed: ");
-        Serial.println(STATE);
-        LAST_STATE = STATE;
-    }
+    //     Serial.print("STATE changed: ");
+    //     Serial.println(STATE);
+    //     LAST_STATE = STATE;
+    // }
 }
 
 void getData()
@@ -697,8 +697,8 @@ void loop()
     Serial.println("Altitude: " + String(altitude));
     Serial.println("Temperature: " + String(temperature));
     Serial.println("Pressure: " + String(pressure));
-    // getData();     // Update data from sensors
-    // detectState(); // Detect the current state of the rocket
-    // sendData();    // Send data to MQTT broker
-    // checkA9G();
+    getData();     // Update data from sensors
+    detectState(); // Detect the current state of the rocket
+    sendData();    // Send data to MQTT broker
+    checkA9G();
 }

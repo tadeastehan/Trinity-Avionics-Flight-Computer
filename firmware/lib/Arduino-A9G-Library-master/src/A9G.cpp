@@ -328,7 +328,7 @@ void GSM::executeCallback()
 
 bool GSM::_checkResponse(const int timeout)
 {
-    char response[150];                    // Assuming the response won't exceed 50 characters
+    char response[512];                    // Assuming the response won't exceed 50 characters
     memset(response, 0, sizeof(response)); // Initialize response to all zeros
     long int start_time = millis();
     int idx = 0; // Index to keep track of response characters
