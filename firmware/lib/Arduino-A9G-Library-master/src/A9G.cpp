@@ -328,7 +328,7 @@ void GSM::executeCallback()
 
 bool GSM::_checkResponse(const int timeout)
 {
-    char response[150];                    // Assuming the response won't exceed 50 characters
+    char response[512];                    // Assuming the response won't exceed 50 characters
     memset(response, 0, sizeof(response)); // Initialize response to all zeros
     long int start_time = millis();
     int idx = 0; // Index to keep track of response characters
@@ -1442,6 +1442,19 @@ void GSM::errorPrintCMS(int ret)
 bool GSM::ReleaseGPSUart()
 {
     _gsm->println("AT+GPSUPGRADE=1");
+    if (_checkResponse(2000))
+    {
+        return true;
+    }
+    else
+    {
+        return false;
+    }
+}
+
+bool GSM::SupportedNetworkSettings()
+{
+    _gsm->println("AT+CREG?");
     if (_checkResponse(2000))
     {
         return true;

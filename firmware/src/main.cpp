@@ -1,283 +1,221 @@
 #include <Arduino.h>
-
-// SD card libraries
-#include <SPI.h>
-#include "SdFat.h"
-
-// A9G libraries
-#include <SoftwareSerial.h>
-#include <A9G.h>
-#include <MicroNMEA.h>
-
-// BMP libraries
-#include <Wire.h>
-#include "SparkFunBMP384.h"
-
-// Servo libraries
-#include <ESP32Servo.h>
+#include "pudding/pudding.h"
+#include "qwiic/qwiic.h"
+#include "board/board.h"
 
 // Moving average library
 #include <movingAvg.h> // https://github.com/JChristensen/movingAvg
 
-// STATE
-String STATE = "INIT";
-String LAST_STATE = "INIT";
-int STATE_NUMBER = 1;
-
-// SD card initialization
-#define SD_CS_PIN SS
-SdFat SD;
-int fileCounter = 1;
-String fileName = "data_0.csv";
-File myFile;
-String csv_header = "Time,Altitude,Latitude,Longitude,Pressure,Temp,aX,aY,aZ,gX,gY,gZ,acX,acY,acZ";
-
-// A9G initialization
-GSM gsm(1);
-
-// GPS initialization
-#define GPS_RXPIN 0  // GPIO0
-#define GPS_TXPIN -1 // unused
-#define GPS_BAUD 9600
-SoftwareSerial gps(GPS_RXPIN, GPS_TXPIN);
-char nmeaBuffer[100];
-MicroNMEA nmea(nmeaBuffer, sizeof(nmeaBuffer));
-long latitude, longitude;
-bool gpsFix = false;
-
-#define GPS_EN 1 // GPIO1
-unsigned long SetupA9GInterval = 20000;
-unsigned long LastSetupA9GTime = 0;
-bool A9GRunning = false;
-
-// Wait 20 seconds before setup (non-blocking)
-unsigned long setupStartTime = 0;
-bool setupInProgress = false;
-bool resetInProgress = false;     // New flag for reset phase
-unsigned long resetStartTime = 0; // New timestamp for reset phase
-
-// MQTT initialization
-#define BROKER_NAME "broker.hivemq.com"
-#define PORT 1883
-#define USER ""
-#define PASS ""
-#define UNIQUE_ID "roocket"
-#define PUB_TOPIC "iotready/gprs"
-#define SUB_TOPIC "iotready/gprs"
-#define CLEAN_SEASSION 0
-#define KEEP_ALIVE 120
-
-// Sending interval
-unsigned long lastSendingTime = 0;
-unsigned long currentSendingTime = 0;
-int sendingIntervalSlow = 1000;
-int sendingIntervalFast = 50;
-unsigned long sendingInterval = sendingIntervalSlow;
-
-// BMP init
-
-BMP384 pressureSensor;
-uint8_t i2cAddress = BMP384_I2C_ADDRESS_DEFAULT; // 0x77
-bmp3_data data;
-
-#define SEALEVELPRESSURE_HPA (1013.25)
-float temperature;
-float pressure;
-int altitude;
-
-// Servo initialization
-Servo myservo;
-int openedServoPosition = 19;
-int closedServoPosition = 95;
-int servoPin = 2; // GPIO1
-
-// Before the flight eject pin
-int ejectPin = 7;
-bool ejectPinState; // 0 = closed    1 = open
-
-unsigned long lastMeasurementTime = 0;
-unsigned long currentTime = 0;
-
-unsigned long loopCounter = 0;
-
 // Apagee detection
 movingAvg avgAltitude(10);
 int avgAltitude_result;
-int maxAltitude = -10000;       // Initialize to a very low value
-int minAltitude = 10000;        // Initialize to a very high value
-const int descentThreshold = 3; // Threshold to detect descent
+
+int minAltitude = 10000;  // Initialize to a very high value
+int maxAltitude = -10000; // Initialize to a very low value
 
 // Launch detection
-int launchThreshold = 1; // Minimum altitude change to detect launch
-bool launchThresholdONCE = false;
-int launchAltitude = 0;
+int AltitudeNeededForLaunch = 0;
+
+unsigned long SDCardWriteTimeLast = 0;
+unsigned long SDCardWriteTimeDiff = 0;
+
+unsigned long SerialUpdateTimeLast = 0; // Last time serial data was updated
+unsigned long BatteryVoltageUpdateTimeLast = 0;
+unsigned long MQTTUpdateTimeLast = 0;
 
 // Landing detection
 #define LIST_SIZE 10
-int altitudeResults[LIST_SIZE] = {0};
+int descentAltitudes[LIST_SIZE] = {0};
 int currentIndex = 0;
+int descentLoopCounter = 0; // Counter for descent loop
 
-// Battery voltage
-#define BATTERY_PIN 6
-#define BATTERY_VOLTAGE_DIVIDER 5.7 // Voltage divider ratio (R1 + R2) / R2
-float batteryVoltage = 0.0;
-
-// Buzzer
-#define BUZZER_PIN 5
-#define BUZZING_INTERVAL 1000 // Buzzer interval in milliseconds
-static unsigned long lastTimeBuzzer = 0;
-static unsigned long currentTimeBuzzer = 0;
-static bool buzzerState = LOW;
-
-float calculateAltitude(float seaLevel, float atmospheric_pressure)
+enum AVIONICS_State
 {
-    float atmospheric = atmospheric_pressure / 100.0F;
-    return 44330.0 * (1.0 - pow(atmospheric / seaLevel, 0.1903));
-}
+    INIT,
+    READY,
+    GROUND,
+    ARM,
+    ASCENT,
+    DEPLOY,
+    DESCENT,
+    LANDED
+};
 
-void setupBuzzer()
-{
-    pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, buzzerState); // Turn off the buzzer initially
-}
+AVIONICS_State currentState = INIT;
+AVIONICS_State lastState = INIT;
 
-void buzz()
+void SDCardLogging()
 {
-    currentTimeBuzzer = millis();
-    if (currentTimeBuzzer - lastTimeBuzzer >= BUZZING_INTERVAL)
+    SDCardWriteTimeDiff = millis() - SDCardWriteTimeLast; // Calculate the time difference since the last write
+    if (SDCardWriteTimeDiff >= SD_CARD_WRITE_INTERVAL)
     {
-        lastTimeBuzzer = currentTimeBuzzer;
-        buzzerState = !buzzerState; // Toggle buzzer state
-        digitalWrite(BUZZER_PIN, buzzerState);
+        SDCardWriteTimeLast = millis(); // Update the last write time
+
+        BMPData bmpData = getBMPData();
+        sfe_lsm_data_t accelData = getLSM6DSV16XAccel();
+        sfe_lsm_data_t gyroData = getLSM6DSV16XGyro();
+        nmeaData gpsData = getGPSdata();
+
+        char csv_line[166];
+        //                                    Time[d_ms],Altitude[m],Latitude[°],Longitude[°],Pressure[hPa],Temp[°C],gX[°],gY[°],gZ[°],acX[ms-2],acY[ms-2],acZ[ms-2],state[x]
+        snprintf(csv_line, sizeof(csv_line), "%lu,%.2f,%.6f,%.6f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%.2f,%d",
+                 SDCardWriteTimeDiff,
+                 bmpData.altitude,
+                 gpsData.latitude / 1000000.0,
+                 gpsData.longitude / 1000000.0,
+                 bmpData.pressure,
+                 bmpData.temperature,
+                 gyroData.xData,
+                 gyroData.yData,
+                 gyroData.zData,
+                 accelData.xData,
+                 accelData.yData,
+                 accelData.zData,
+                 currentState);
+
+        SDCardWrite(csv_line); // Write to SD card
     }
 }
 
-void setupBattery()
+void update()
 {
-    pinMode(BATTERY_PIN, INPUT);
-}
-
-void setupSD()
-{
-    if (SD.begin(SD_CS_PIN))
+    updateGPS();
+    if (millis() - BatteryVoltageUpdateTimeLast >= BATTERY_VOLTAGE_UPDATE_INTERVAL)
     {
-        while (SD.exists(fileName))
-        {
-            fileName = "data_" + String(fileCounter) + ".csv";
-            fileCounter++;
-            Serial.println(fileName);
-        }
-        myFile = SD.open(fileName, FILE_WRITE);
-        if (myFile)
-        {
-            myFile.print(csv_header);
-            myFile.print("\n");
-            myFile.close();
-
-            Serial.println("SD Status: OK");
-        }
-        else
-        {
-            Serial.println("SD Status: FAIL");
-        }
-    }
-    else
-    {
-        Serial.println("SD Status: FAIL");
+        BatteryVoltageUpdateTimeLast = millis(); // Update the last battery voltage update time
+        updateBatteryVoltage();                  // Update battery voltage
     }
 }
 
-void setupBMP()
+void detectStateChange()
 {
-    if (pressureSensor.beginI2C(i2cAddress) == BMP3_OK)
-    { // hardware I2C mode, can pass in address & alt Wire
-        Serial.println("BMP Status: OK");
+    if (currentState != lastState)
+    {
 
-        int8_t err = BMP3_OK;
+        Serial.print("State changed: ");
+        switch (currentState)
+        {
+        case INIT:
+            Serial.println("INIT");
+            break;
+        case READY:
+            Serial.println("READY");
+            break;
+        case GROUND:
+            Serial.println("GROUND");
+            break;
+        case ARM:
+            Serial.println("ARM");
+            break;
+        case ASCENT:
+            Serial.println("ASCENT");
+            break;
+        case DEPLOY:
+            Serial.println("DEPLOY");
+            break;
+        case DESCENT:
+            Serial.println("DESCENT");
+            break;
+        case LANDED:
+            Serial.println("LANDED");
+            break;
+        }
+        lastState = currentState; // Update last state
+    }
+}
 
-        bmp3_odr_filter_settings osrMultipliers =
+void detectState()
+{
+    switch (currentState)
+    {
+    case INIT:
+        if (digitalRead(RBF_PIN) == LOW) // RBF pressed
+        {
+            currentState = READY; // Transition to ARM state if RBF is pressed
+        }
+        break;
+    case READY:
+        if (digitalRead(RBF_PIN) == HIGH) // RBF released
+        {
+            currentState = GROUND; // Transition to ARM state if RBF is released
+        }
+        break;
+    case GROUND:
+        for (int i = 0; i < 10; i++)
+        {
+            updateBMP384(); // Update BMP384 sensor data
+            avgAltitude_result = avgAltitude.reading((int)getBMPData().altitude);
+            delay(40); // 25Hz sampling rate
+        }
+
+        AltitudeNeededForLaunch = avgAltitude_result + LAUCH_THRESHOLD; // Set the altitude needed for launch
+        Serial.print("Altitude needed for launch: ");
+        Serial.println(AltitudeNeededForLaunch);
+        currentState = ARM; // Transition to ARM state
+        break;
+    case ARM:
+        avgAltitude_result = avgAltitude.reading((int)getBMPData().altitude);
+        if (avgAltitude_result >= AltitudeNeededForLaunch)
+        {
+            currentState = ASCENT; // Transition to ASCENT state if altitude is sufficient
+        }
+        SDCardLogging(); // Log data to SD card
+        break;
+    case ASCENT:
+        avgAltitude_result = avgAltitude.reading((int)getBMPData().altitude);
+        if (avgAltitude_result > maxAltitude)
+        {
+            maxAltitude = avgAltitude_result; // Update maximum altitude during ascent
+        }
+        if (avgAltitude_result <= (maxAltitude - DESCENT_THRESHOLD))
+        {
+            currentState = DEPLOY; // Transition to DEPLOY state if descent is detected
+        }
+        SDCardLogging(); // Log data to SD card
+        break;
+    case DEPLOY:
+        avgAltitude_result = avgAltitude.reading((int)getBMPData().altitude);
+        ServoOpen();            // Open the servo to deploy the payload
+        currentState = DESCENT; // Transition to DESCENT state
+        break;
+    case DESCENT:
+        avgAltitude_result = avgAltitude.reading((int)getBMPData().altitude);
+        buzz();          // Activate buzzer during descent
+        SDCardLogging(); // Log data to SD card
+        descentLoopCounter++;
+        if (avgAltitude_result < minAltitude)
+        {
+            minAltitude = avgAltitude_result; // Update minimum altitude during descent
+        }
+        if (descentLoopCounter >= 100) // Check every 100 loops (about 4 seconds at 25Hz)
+        {
+            descentLoopCounter = 0;                              // Reset the loop counter every 100 iterations
+            descentAltitudes[currentIndex] = avgAltitude_result; // Store the current altitude in the list
+            currentIndex = (currentIndex + 1) % LIST_SIZE;       // Update index for next altitude
+
+            bool allSame = true;
+            for (int i = 1; i < LIST_SIZE; i++)
             {
-                .press_os = BMP3_OVERSAMPLING_4X,
-                .temp_os = BMP3_OVERSAMPLING_8X,
-                .iir_filter = BMP3_IIR_FILTER_COEFF_3,
-            };
-
-        err = pressureSensor.setOSRMultipliers(osrMultipliers);
-        if (err)
-        {
-            // Setting OSR failed, most likely an invalid multiplier (code -3)
-            Serial.print("Error setting OSR! Error code: ");
-            Serial.println(err);
+                if (descentAltitudes[i] != descentAltitudes[0])
+                {
+                    allSame = false; // Check if all values in the list are the same
+                    break;
+                }
+            }
+            if (allSame)
+            {
+                currentState = LANDED; // Transition to LANDED state if all values are the same
+                SDCardClose();         // Close the SD card file
+            }
         }
-    }
-    else
-    {
-        Serial.println("BMP Status: FAIL");
-    }
-
-    // Spit of garbage data
-    for (int i = 0; i <= 50; i++)
-    {
-        int8_t err = pressureSensor.getSensorData(&data);
-
-        // Check whether data was acquired successfully
-        if (err == BMP3_OK)
+        break;
+    case LANDED:
+        SDCardLogging(); // Log data to SD card
+        // In LANDED state, you can perform any final actions or wait for a reset
+        if (digitalRead(RBF_PIN) == HIGH) // RBF released
         {
-            altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
+            buzz(); // Activate buzzer
         }
-        else
-        {
-            // Acquisition failed, most likely a communication error (code -2)
-            Serial.print("Error getting data from sensor! Error code: ");
-            Serial.println(err);
-        }
-    }
-
-    avgAltitude.begin();
-}
-
-void A9G_eventDispatch(A9G_Event_t *event)
-{
-    switch (event->id)
-    {
-    case EVENT_MQTTPUBLISH:
-        Serial.print("Topic: ");
-        Serial.println(event->topic);
-        Serial.printf("message: %s\n", event->message);
-        break;
-
-    case EVENT_NEW_SMS_RECEIVED:
-        Serial.print("Number: ");
-        Serial.println(event->number);
-        Serial.print("Message: ");
-        Serial.println(event->message);
-        Serial.print("Date & Time: ");
-        Serial.println(event->date_time);
-        break;
-
-    case EVENT_CSQ:
-        Serial.print("CSQ: ");
-        Serial.println(event->param1);
-        break;
-
-    case EVENT_IMEI:
-        Serial.print("IMEI: ");
-        Serial.println(event->param2);
-        break;
-
-    case EVENT_CCID:
-        Serial.print("CCID: ");
-        Serial.println(event->param2);
-        break;
-
-    case EVENT_CME:
-        Serial.print("CME ERROR Message:");
-        gsm.errorPrintCME(event->error);
-        break;
-
-    case EVENT_CMS:
-        Serial.print("CMS ERROR Message:");
-        gsm.errorPrintCMS(event->error);
         break;
 
     default:
@@ -285,381 +223,100 @@ void A9G_eventDispatch(A9G_Event_t *event)
     }
 }
 
-void A9GInitialSetup()
-{
-    Serial0.begin(115200); // Serial0 is the hardware serial port on the A9G
-    gsm.init(&Serial0);
-    gsm.EventDispatch(A9G_eventDispatch);
-
-    pinMode(GPS_EN, OUTPUT);
-    digitalWrite(GPS_EN, HIGH);
-}
-
-bool GPSSetup()
-{
-    if (gsm.ReleaseGPSUart())
-    {
-        gps.begin(GPS_BAUD);
-
-        Serial.println("GPS Status: OK");
-        return true;
-    }
-    else
-    {
-        Serial.println("GPS Status: FAIL");
-        return false;
-    }
-}
-
-bool MQTTSetup()
-{
-    bool status = false;
-    if (gsm.AttachToGPRS())
-    {
-        if (gsm.SetAPN("IP", "internet"))
-        {
-            if (gsm.ActivatePDP())
-            {
-                if (gsm.ConnectToBroker(BROKER_NAME, PORT, UNIQUE_ID, KEEP_ALIVE, CLEAN_SEASSION))
-                {
-                    if (gsm.PublishToTopic(PUB_TOPIC, "Hello IoT Started"))
-                    {
-                        status = true;
-                        Serial.println("MQTT Status: OK");
-                    }
-                }
-                else
-                {
-                    Serial.println("Broker Connect Fail");
-                }
-            }
-            else
-            {
-                Serial.println("Activate PDP Fail");
-            }
-        }
-        else
-        {
-            Serial.println("APN Set Fail");
-        }
-    }
-    else
-    {
-        Serial.println("GPRS Attach Fail");
-    }
-    if (!status)
-    {
-        Serial.println("MQTT Status: FAIL");
-    }
-    return status;
-}
-
-void setupServo()
-{
-    // Allow allocation of all timers
-    ESP32PWM::allocateTimer(0);
-    ESP32PWM::allocateTimer(1);
-    ESP32PWM::allocateTimer(2);
-    ESP32PWM::allocateTimer(3);
-    myservo.setPeriodHertz(50);          // standard 50 hz servo
-    myservo.attach(servoPin, 500, 2500); // 500us to 2500us
-
-    myservo.write(openedServoPosition);
-}
-
 void setup()
 {
     Serial.begin(115200);
-
-    pinMode(ejectPin, INPUT_PULLUP);
-
     delay(2000);
 
-    setupServo();
-    setupBattery();
-    setupBuzzer();
-    setupSD();
-    Wire.begin();
-    Wire.setClock(400000); // 400khz clock
-    setupBMP();
-
-    A9GInitialSetup();
-}
-
-void getGPSdata()
-{
-    while (gps.available())
+    if (QWIICsetup())
     {
-        char c = gps.read();
-        nmea.process(c);
+        Serial.println("QWIIC: OK");
     }
-
-    latitude = nmea.getLatitude();
-    longitude = nmea.getLongitude();
-    gpsFix = nmea.isValid();
-}
-
-void getBMPdata()
-{
-    pressureSensor.getSensorData(&data);
-    temperature = data.temperature;
-    pressure = data.pressure;
-
-    altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
-}
-
-void getBatteryVoltage()
-{
-    uint32_t Vbatt = 0;
-    for (int i = 0; i < 16; i++)
+    else
     {
-        Vbatt += analogReadMilliVolts(BATTERY_PIN); // Read and accumulate ADC voltage
+        Serial.println("QWIIC: FAIL");
     }
-
-    batteryVoltage = BATTERY_VOLTAGE_DIVIDER * (Vbatt / 16.0) / 1000.0; // Convert to voltage
-}
-
-void detectState()
-{
-    // Read the eject pin state
-    if (STATE == "INIT" || STATE == "READY")
-    {
-        ejectPinState = digitalRead(ejectPin);
-
-        if (ejectPinState == 0 && STATE == "INIT")
-        {
-            STATE = "READY";
-            STATE_NUMBER = 2;
-            myservo.write(closedServoPosition);
-        }
-        if (ejectPinState == 1 && STATE == "READY")
-        {
-            STATE = "ARM";
-            STATE_NUMBER = 3;
-        }
-    }
-
-    // When the rocket is armed, the launch threshold is set
-    // to the current altitude and the average altitude is calculated
-    if (STATE == "ARM" && !launchThresholdONCE)
-    {
-        Serial.println("ARMED - position zeroed");
-        pressureSensor.getSensorData(&data);
-        altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
-        launchThreshold += altitude;
-        launchThresholdONCE = true;
-
-        for (int i = 0; i <= 10; i++)
-        {
-            pressureSensor.getSensorData(&data);
-            altitude = calculateAltitude(SEALEVELPRESSURE_HPA, data.pressure);
-            avgAltitude.reading(altitude);
-        }
-
-        launchAltitude = avgAltitude.reading(altitude);
-    }
-
-    if (STATE == "ARM" && avgAltitude_result >= launchThreshold)
-    {
-        STATE = "ASCENT";
-        STATE_NUMBER = 4;
-    }
-
-    if (STATE == "DEPLOY")
-    {
-        myservo.write(openedServoPosition);
-        STATE = "DESCENT";
-        STATE_NUMBER = 6;
-    }
-
-    if (STATE == "DESCENT")
-    {
-        loopCounter++;
-    }
-
-    if (STATE != "READY" || STATE != "INIT")
-    {
-        avgAltitude_result = avgAltitude.reading(altitude);
-    }
-
-    if (STATE == "DESCENT" && loopCounter >= 100)
-    {
-        loopCounter = 0;
-
-        // Add the current avgAltitude_result to the list
-        altitudeResults[currentIndex] = avgAltitude_result;
-        currentIndex = (currentIndex + 1) % LIST_SIZE;
-
-        // Check if all values in the list are the same
-        bool allSame = true;
-        for (int i = 1; i < LIST_SIZE; i++)
-        {
-            if (altitudeResults[i] != altitudeResults[0])
-            {
-                allSame = false;
-                break;
-            }
-        }
-
-        // Print a message if all values are the same
-        if (allSame)
-        {
-            STATE = "LANDED";
-            STATE_NUMBER = 7;
-        }
-    }
-
-    // Update maximum altitude during ascent
-    if (STATE == "ASCENT" && avgAltitude_result > maxAltitude)
-    {
-        maxAltitude = avgAltitude_result;
-    }
-
-    // Check for transition from ascent to descent
-    if (STATE == "ASCENT" && avgAltitude_result <= (maxAltitude - descentThreshold))
-    {
-        STATE = "DEPLOY";
-        STATE_NUMBER = 5;
-    }
-
-    if (STATE == "DESCENT" && avgAltitude_result < minAltitude)
-    {
-        minAltitude = avgAltitude_result;
-    }
-
-    if (STATE == "DESCENT" or STATE == "LANDED")
-    {
-        buzz();
-    }
-
-    if (STATE != LAST_STATE)
-    {
-        if (STATE == "ASCENT" or STATE == "DESCENT" or STATE == "DEPLOY")
-        {
-            sendingInterval = sendingIntervalFast;
-        }
-        else
-        {
-            sendingInterval = sendingIntervalSlow; // READY, LANDED
-        }
-
-        Serial.print("STATE changed: ");
-        Serial.println(STATE);
-        LAST_STATE = STATE;
-    }
-}
-
-void getData()
-{
-    getGPSdata();
-    getBMPdata();
-    getBatteryVoltage();
-}
-
-void sendData()
-{
-    currentSendingTime = millis();
-    unsigned long sendingTimeDiff = currentSendingTime - lastSendingTime;
-    if (sendingTimeDiff >= sendingInterval)
-    {
-        lastSendingTime = currentSendingTime;
-        // Serial.print("Battery Voltage: ");
-        // Serial.println(batteryVoltage);
-        // Serial.print("Latitude: ");
-        // Serial.print(latitude / 1000000., 6);
-        // Serial.print(" Longitude: ");
-        // Serial.print(longitude / 1000000., 6);
-        // Serial.print(" GPS Fix: ");
-        // Serial.print(gpsFix ? "OK" : "NO FIX");
-        // Serial.print(" Temperature: ");
-        // Serial.print(temperature);
-        // Serial.print(" Pressure: ");
-        // Serial.print(pressure);
-        // Serial.print(" Altitude: ");
-        // Serial.print(altitude);
-        // Serial.println();
-
-        char csv_line[200];
-        sprintf(csv_line, "%lu,%d,%.6f,%.6f,%.2f,%.2f,0,0,0,0,0,0,0,0,0", sendingTimeDiff, altitude, latitude / 1000000., longitude / 1000000., pressure, temperature);
-
-        Serial.println(">Time:" + String(sendingTimeDiff) + "," + "Altitude:" + String(altitude) + "," + "Latitude:" + String(latitude / 1000000., 6) + "," + "Longitude:" + String(longitude / 1000000., 6) + "," + "Pressure:" + String(pressure) + "," + "Temperature:" + String(temperature) + "," + "State:" + STATE + "," + "State Number:" + String(STATE_NUMBER));
-        // Serial.println(csv_header);
-        // Serial.println(csv_line);
-        gsm.PublishToTopicNoWait(PUB_TOPIC, csv_line);
-    }
-}
-
-void checkA9G()
-{
-    currentTime = millis();
-    // Check if it's time to check the A9G status
-    if (currentTime - LastSetupA9GTime > SetupA9GInterval && !resetInProgress && !setupInProgress)
-    {
-        LastSetupA9GTime = currentTime;
-        A9GRunning = gsm.bIsReady();
-    }
-
-    // If A9G is not running, start the reset and setup phases
-    if (!A9GRunning)
-    {
-        // If we're not in reset or setup phase, start the reset phase
-        if (!resetInProgress && !setupInProgress)
-        {
-            Serial.println("A9G is not running, starting reset procedure...");
-            digitalWrite(GPS_EN, LOW); // Pull GPS_EN LOW
-            resetStartTime = millis();
-            resetInProgress = true;
-        }
-
-        // If we're in reset phase and 5 seconds have passed, start setup phase
-        if (resetInProgress && (millis() - resetStartTime >= 5000))
-        {
-            Serial.println("Reset phase complete, pulling GPS_EN HIGH");
-            digitalWrite(GPS_EN, HIGH); // Pull GPS_EN HIGH
-            resetInProgress = false;
-            setupStartTime = millis();
-            setupInProgress = true;
-            Serial.println("A9G setup starting, waiting 20 seconds...");
-        }
-    }
-
-    // Check if 20 seconds have passed since setup began
-    if (setupInProgress && (millis() - setupStartTime >= 20000))
-    {
-        Serial.println("Setting up A9G after wait...");
-
-        // Reset the flag for next time
-        setupInProgress = false;
-
-        // Try to initialize A9G
-        if (gsm.bIsReady())
-        {
-            Serial.println("A9G is now ready");
-            Serial.println("***********Read CSQ ***********");
-            gsm.ReadCSQ();
-
-            // Setup MQTT and GPS
-            if (MQTTSetup() && GPSSetup())
-            {
-                Serial.println("MQTT and GPS setup complete");
-                A9GRunning = true;
-            }
-            else
-            {
-                Serial.println("A9G setup failed - MQTT or GPS setup failed");
-            }
-        }
-        else
-        {
-            Serial.println("A9G setup failed");
-        }
-    }
+    puddingNonBlockingInit(); // Non-blocking pudding init
+    setupBoard();             // Initialize board pins and peripherals
+    avgAltitude.begin();
 }
 
 void loop()
 {
-    getData();     // Update data from sensors
-    detectState(); // Detect the current state of the rocket
-    sendData();    // Send data to MQTT broker
-    checkA9G();
+    updateBMP384();      // Update BMP384 sensor data
+    detectState();       // Detect the current state of the rocket
+    detectStateChange(); // Check if the state has changed
+    updateLSM6DSV16X();
+
+    update(); // Update GPS and battery voltage
+    puddingProcess();
+
+    if (millis() - MQTTUpdateTimeLast >= MQTT_UPDATE_INTERVAL)
+    {
+        MQTTUpdateTimeLast = millis(); // Update the last MQTT update time
+        nmeaData gps = getGPSdata();
+        char mqttPayload[300];
+        snprintf(mqttPayload, sizeof(mqttPayload),
+                 "navSystem:%d,numSatellites:%d,hdop:%d,valid:%s,latitude:%.6f,longitude:%.6f,altitude:%.3f,date:%04d-%02d-%02d,time:%02d:%02d:%02d.%02d,speed:%.3f,course:%.3f",
+                 gps.navSystem,
+                 gps.numSatellites,
+                 gps.hdop,
+                 gps.valid ? "true" : "false",
+                 gps.latitude / 1000000.0,
+                 gps.longitude / 1000000.0,
+                 gps.altitude / 1000.0,
+                 gps.year,
+                 gps.month,
+                 gps.day,
+                 gps.hour,
+                 gps.minute,
+                 gps.second,
+                 gps.hundredths,
+                 gps.speed / 1000.0,
+                 gps.course / 1000.0);
+        puddingUart.PublishToTopicNoWait(PUB_TOPIC, mqttPayload);
+    }
+
+    if (millis() - SerialUpdateTimeLast >= SERIAL_UPDATE_INTERVAL)
+    {
+        SerialUpdateTimeLast = millis(); // Update the last serial update time
+
+        nmeaData gps = getGPSdata();
+        Serial.println("GPS Data:");
+        Serial.print("  navSystem: ");
+        Serial.println(gps.navSystem);
+        Serial.print("  numSatellites: ");
+        Serial.println(gps.numSatellites);
+        Serial.print("  hdop: ");
+        Serial.println(gps.hdop);
+        Serial.print("  valid: ");
+        Serial.println(gps.valid ? "true" : "false");
+        Serial.print("  latitude: ");
+        Serial.println(gps.latitude / 1000000.0, 6);
+        Serial.print("  longitude: ");
+        Serial.println(gps.longitude / 1000000.0, 6);
+        Serial.print("  altitude: ");
+        Serial.print(gps.altitude / 1000.0, 3);
+        Serial.println(" m");
+        Serial.print("  date: ");
+        Serial.print(gps.year);
+        Serial.print('-');
+        Serial.print(gps.month);
+        Serial.print('-');
+        Serial.println(gps.day);
+        Serial.print("  time: ");
+        Serial.print(gps.hour);
+        Serial.print(':');
+        Serial.print(gps.minute);
+        Serial.print(':');
+        Serial.print(gps.second);
+        Serial.print('.');
+        Serial.println(gps.hundredths);
+        Serial.print("  speed: ");
+        Serial.print(gps.speed / 1000.0, 3);
+        Serial.println(" knots");
+        Serial.print("  course: ");
+        Serial.print(gps.course / 1000.0, 3);
+        Serial.println(" deg");
+    }
 }

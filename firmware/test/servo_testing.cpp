@@ -11,7 +11,7 @@ int pos = 0; // variable to store the servo position
 // Possible PWM GPIO pins on the ESP32-S3: 0(used by on-board button),1-21,35-45,47,48(used by on-board LED)
 // Possible PWM GPIO pins on the ESP32-C3: 0(used by on-board button),1-7,8(used by on-board LED),9-10,18-21
 
-int servoPin = 1;
+int servoPin = 2;
 
 void setup()
 {
