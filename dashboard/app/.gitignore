@@ -1,0 +1,10 @@
+.env
+Include/
+Lib/
+Scripts/
+pyvenv.cfg
+__pycache__/
+share/
+etc/
+preferences.json
+qr_code.png

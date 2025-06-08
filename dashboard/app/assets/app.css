@@ -1,0 +1,245 @@
+body {
+  background-color: #2b2b2b;
+  font-family: 'Concert One';
+  font-style: normal;
+}
+
+p,
+label {
+  color: #fec036;
+}
+
+.grid-container {
+  display: grid;
+  grid-template-areas:
+    'item1 item2 item2 item3'
+    'item4 item4 item4 item3'
+    'item5 item9 item6 item7'
+    'item8 item8 item8 item7';
+}
+
+.item1 {
+  grid-area: item1;
+}
+.item2 {
+  grid-area: item2;
+}
+.item3 {
+  grid-area: item3;
+}
+.item4 {
+  grid-area: item4;
+}
+.item5 {
+  grid-area: item5;
+}
+.item6 {
+  grid-area: item6;
+}
+.item7 {
+  grid-area: item7;
+}
+
+.item8 {
+  margin-top: 5rem;
+  grid-area: item8;
+}
+
+.item9 {
+  grid-area: item9;
+}
+
+#map {
+  width: 640px;
+  height: 640px;
+}
+
+#header_text {
+  text-align: left;
+  font-size: 50px;
+  color: #fec036;
+}
+
+#logo {
+  max-width: 300px;
+  width: 100%;
+  float: left;
+  margin-left: 50px;
+  filter: invert(80%) sepia(70%) saturate(808%) hue-rotate(329deg)
+    brightness(103%) contrast(100%);
+}
+
+#map-style-dropdown {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4000;
+  width: 120px;
+}
+
+#map-style-dropdown {
+  position: absolute;
+  top: 0px;
+  right: 0px;
+  z-index: 4000;
+  width: 120px;
+}
+
+#share-rocket-position,
+#set-marker-button,
+#teleport-rocket,
+#teleport-home {
+  position: absolute;
+  bottom: 0px;
+  z-index: 8000;
+  bottom: 0px;
+  width: 35px;
+  height: 35px;
+  background: none;
+  border: none;
+  padding: 2px;
+  margin: 0 2px 4px 2px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#share-rocket-position:hover,
+#set-marker-button:hover,
+#teleport-rocket:hover,
+#teleport-home:hover {
+  background: #333;
+  border-radius: 50%;
+}
+
+#share-rocket-position img,
+#set-marker-button img,
+#teleport-rocket img,
+#teleport-home img {
+  width: 30px;
+  height: 30px;
+  filter: invert(80%) sepia(70%) saturate(808%) hue-rotate(329deg)
+    brightness(103%) contrast(100%);
+}
+
+#share-rocket-position {
+  right: 0px;
+}
+#set-marker-button {
+  right: 35px;
+}
+#teleport-home {
+  right: 70px;
+}
+#teleport-rocket {
+  right: 105px;
+}
+
+.leaflet-control-attribution {
+  display: none;
+}
+
+#file-dropdown,
+#data-column-dropdown {
+  width: 160px;
+  font-size: 15px;
+  height: 32px;
+  margin-right: 8px;
+  margin-bottom: 0px;
+  margin-top: 0px;
+  border-radius: 4px;
+  background: #222;
+  color: #2b2b2b;
+}
+
+#header_text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+#header_text > div {
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin-top: 0px;
+  margin-bottom: 0px;
+}
+
+#header_text > p {
+  width: 100%;
+  text-align: center;
+  margin-bottom: 8px;
+  margin-left: 52px; /* Move the Telemetry title right to center with dropdowns */
+}
+
+.stage_button_container {
+  display: flex;
+  align-items: center; /* Align buttons vertically center */
+}
+
+.stage_button {
+  color: #2b2b2b;
+  font-size: 20px;
+  font-weight: bold;
+  border: none;
+  border-radius: 50%;
+  margin: 10px;
+  margin-right: 30px;
+  text-align: center;
+  position: relative;
+  width: 133px; /* Fixed width for all buttons */
+  height: 44px; /* Fixed height for all buttons */
+}
+
+.stage_button:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: -25px; /* Adjust the distance between the arrow and the button */
+  width: 15px;
+  height: 15px;
+  border-right: 0.2em solid #fec036;
+  border-top: 0.2em solid #fec036;
+  transform: rotate(45deg);
+  margin-top: -7.5px; /* Half of the arrow's height to vertically center it */
+}
+
+.terminal {
+  width: 90%;
+  background: #000;
+  color: #fec036;
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.terminal pre {
+  font-size: 30px;
+  margin-left: 50px;
+}
+
+#recieved_text {
+  color: #fec036;
+}
+
+#map {
+  border-radius: 10px;
+}
+
+#qr_code_image {
+  position: absolute;
+  max-width: 300px;
+  width: 100%;
+}
+
+#placeholder-rectangle {
+  size: 471.067, 284.467;
+}
+
+#control-panel-battery-component {
+  background-color: #2b2b2b;
+}
+
+/* Make the battery unit (V) bigger using a more general selector ("xpath-like") */
+#control-panel-battery-component > div > div > div > div > label {
+  font-size: 1.2em !important;
+  vertical-align: middle;
+}
