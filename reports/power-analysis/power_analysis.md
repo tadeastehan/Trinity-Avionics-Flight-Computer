@@ -11,6 +11,7 @@
 
 ## Discharge Rates Tested
 
+- 0.5C
 - 1C
 - 2C
 - 3C

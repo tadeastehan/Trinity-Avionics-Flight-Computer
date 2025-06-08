@@ -8,6 +8,7 @@ import pandas as pd
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
 GRAPH_DIR = os.path.join(os.path.dirname(__file__), 'graphs')
 FILES = [
+    ('Dualsky520mAh_0_5C.xls', 510),
     ('Dualsky520mAh_1C.xls', 500),
     ('Dualsky520mAh_2C.xls', 490),
     ('Dualsky520mAh_3C.xls', 480),
@@ -43,6 +44,11 @@ def parse_dualsky_file(filepath):
 
 # Plot settings for each curve
 PLOT_STYLES = [
+    {  # 0.5C
+        'label': '0.5C',
+        'color': 'orange',
+        'linewidth': 3,
+    },
     {  # 1C
         'label': '1C',
         'color': '#00847e',
