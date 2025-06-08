@@ -24,14 +24,14 @@ def load_preferences():
     if os.path.exists(preferences_file):
         with open(preferences_file, "r", encoding="utf-8") as file:
             return json.load(file)      
-    return {"center": [49.2388992, 16.5546350], "style": "aerial", "rocket_position": [49.2388992, 16.5546350]}
+    return {"start_marker_position": [49.2388992, 16.5546350], "style": "aerial", "rocket_position": [49.2388992, 16.5547350]}
 
 def save_preferences(preferences):
     with open(preferences_file, "w+", encoding="utf-8") as file:
         json.dump(preferences, file, indent=4, ensure_ascii=False)
 
-def get_center():
-    return preferences_json["center"]
+def get_start_marker_position():
+    return preferences_json["start_marker_position"]
 
 def get_style():
     return preferences_json["style"]
@@ -41,6 +41,7 @@ def get_rocket_position():
 
 load_env_file()
 preferences_json = load_preferences()
+print(f"Loaded preferences: {preferences_json}")
 
 logo = html.Img(
     className="item1",
@@ -89,6 +90,10 @@ header_text = html.Div(
                     clearable=False,
                     style={"width": "160px", "fontSize": 15, "height": "32px"}
                 ),
+                daq.ToggleSwitch(
+                    id='streamed-data',
+                    value=False
+                ),
             ]
         )
     ]
@@ -114,12 +119,12 @@ map_div = html.Div(
             [
                 dl.TileLayer(id="map-tiles",
                              url=f'https://api.mapy.cz/v1/maptiles/{{get_style()}}/256/{{z}}/{{x}}/{{y}}?apikey={{get_api_key()}}'),
-                dl.Marker(id="start-marker", position=get_center(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
+                dl.Marker(id="start-marker", position=get_start_marker_position(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
                 dl.Marker(id="rocket-marker", position=get_rocket_position(), children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
                 dl.Circle(center=get_rocket_position(), radius=5, color='rgba(50, 115, 197, 0.5)', id='rocket-radius')
             ],
             id='map',
-            center=get_center(),
+            center=get_start_marker_position(),
             zoom=16,
         ),
         dcc.Dropdown(
@@ -256,6 +261,8 @@ app.layout = html.Div(
         html.Link(href='https://fonts.googleapis.com/css?family=Concert One',rel='stylesheet'),
         html.Div(id='zoom-display', style={'margin-top': '10px'}),
         dcc.Interval(id='map-update-interval', interval=3000, n_intervals=0),
+        dcc.Interval(id='slow-update-interval', interval=20*60*1000, n_intervals=0),  # 20 minutes
+        dcc.Interval(id='fast-update-interval', interval=1000, n_intervals=0),  # 1 second
         html.Div(
             className="grid-container",
             children=[
@@ -294,7 +301,7 @@ def update_marker_position(clickData):
         if clickData is not None:
             lat = clickData['latlng']['lat']
             lon = clickData['latlng']['lng']
-            preferences_json["center"] = [lat, lon]
+            preferences_json["start_marker_position"] = [lat, lon]
             save_preferences(preferences_json)
             return [lat, lon]
     return dash.no_update
@@ -496,7 +503,7 @@ def update_map_points(selected_file):
             return [
                 dl.TileLayer(id="map-tiles",
                              url=f'https://api.mapy.cz/v1/maptiles/{{get_style()}}/256/{{z}}/{{x}}/{{y}}?apikey={{get_api_key()}}'),
-                dl.Marker(id="start-marker", position=get_center(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
+                dl.Marker(id="start-marker", position=get_start_marker_position(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
                 dl.Marker(id="rocket-marker", position=rocket_marker_position, children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
                 dl.Circle(center=rocket_marker_position, radius=5, color='rgba(50, 115, 197, 0.5)', id='rocket-radius'),
             ] + points
@@ -510,9 +517,9 @@ def update_map_points(selected_file):
         return [
             dl.TileLayer(id="map-tiles",
                          url=f'https://api.mapy.cz/v1/maptiles/{{get_style()}}/256/{{z}}/{{x}}/{{y}}?apikey={{get_api_key()}}'),
-            dl.Marker(id="start-marker", position=get_center(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
-            dl.Marker(id="rocket-marker", position=get_rocket_position(), children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
-            dl.Circle(center=[49.2388992, 16.5546350], radius=5, color='rgba(252, 186, 3, 0.5)', id='rocket-radius'),
+            dl.Marker(id="start-marker", position=get_start_marker_position(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
+            dl.Marker(id="rocket-marker", position=rocket_marker_position, children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
+            dl.Circle(center=rocket_marker_position, radius=5, color='rgba(252, 186, 3, 0.5)', id='rocket-radius'),
         ] + points
     except Exception:
         return dash.no_update
@@ -530,16 +537,34 @@ def teleport_map(n_rocket, n_home, current_center):
     if button_id == 'teleport-rocket':
         # Get rocket position and update preferences
         pos = get_rocket_position()
-        preferences_json["center"] = pos
-        save_preferences(preferences_json)
         return pos
     elif button_id == 'teleport-home':
         # Get start-marker position and update preferences
-        pos = get_center()
-        preferences_json["center"] = pos
-        save_preferences(preferences_json)
+        pos = get_start_marker_position()
         return pos
     return current_center
+
+@app.callback(
+    [Output(f'stage{i+1}', 'style') for i in range(7)],
+    [Input('file-dropdown', 'value')]
+)
+def update_stage_colors(selected_file):
+    stages = ["blanchedalmond"] * 7  # startup colors
+    stage_colors = [
+        "rgb(255, 153, 0)", "rgb(255, 200, 0)", "rgb(255, 224, 0)",
+        "rgb(255, 247, 0)", "rgb(184, 245, 0)", "rgb(149, 226, 20)", "rgb(114, 206, 39)"
+    ]
+    if selected_file:
+        csv_path = os.path.join(DATA_DIR, selected_file)
+        try:
+            df = pd.read_csv(csv_path)
+            if 'State[x]' in df.columns:
+                stage_number = int(df['State[x]'].iloc[-1])
+                if 1 <= stage_number <= 7:
+                    stages[:stage_number] = stage_colors[:stage_number]
+        except Exception:
+            pass
+    return tuple({"background-color": color} for color in stages)
 
 if __name__ == '__main__': 
     app.run(debug=True, port=8050)
