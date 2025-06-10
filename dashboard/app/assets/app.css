@@ -2,6 +2,7 @@ body {
   background-color: #2b2b2b;
   font-family: 'Concert One';
   font-style: normal;
+  margin-top: 10px;
 }
 
 p,
@@ -26,6 +27,7 @@ label {
 }
 .item3 {
   grid-area: item3;
+  position: relative;
 }
 .item4 {
   grid-area: item4;
@@ -52,6 +54,27 @@ label {
 #map {
   width: 640px;
   height: 640px;
+}
+
+#refresh-files-button {
+  width: 35px;
+  height: 35px;
+  background: none;
+  border: none;
+  padding: 2px;
+  margin: 10px 7px 0px 0px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#refresh-files-button:hover {
+  background: #333;
+  border-radius: 50%;
+}
+#refresh-files-button img {
+  width: 30px;
+  height: 30px;
+  filter: invert(80%) sepia(70%) saturate(808%) hue-rotate(329deg)
+    brightness(103%) contrast(100%);
 }
 
 #header_text {
@@ -150,25 +173,11 @@ label {
   color: #2b2b2b;
 }
 
-#header_text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-#header_text > div {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  margin-top: 0px;
-  margin-bottom: 0px;
-}
-
-#header_text > p {
-  width: 100%;
-  text-align: center;
+#header_text_p {
   margin-bottom: 8px;
-  margin-left: 52px; /* Move the Telemetry title right to center with dropdowns */
+  font-size: 50px;
+  color: #fec036;
+  text-align: left;
 }
 
 .stage_button_container {
@@ -203,23 +212,6 @@ label {
   margin-top: -7.5px; /* Half of the arrow's height to vertically center it */
 }
 
-.terminal {
-  width: 90%;
-  background: #000;
-  color: #fec036;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.terminal pre {
-  font-size: 30px;
-  margin-left: 50px;
-}
-
-#recieved_text {
-  color: #fec036;
-}
-
 #map {
   border-radius: 10px;
 }
@@ -242,4 +234,101 @@ label {
 #control-panel-battery-component > div > div > div > div > label {
   font-size: 1.2em !important;
   vertical-align: middle;
+}
+
+.header-title {
+  color: #fec036;
+  font-size: 50px;
+  margin-bottom: 8px;
+  /* Center horizontally above the controls */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 48px; /* Adjust as needed to match the controls' height */
+  width: 100%;
+  text-align: center;
+  /* Remove left alignment from previous style */
+}
+
+.header-text-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.header-dropdown {
+  width: 160px !important;
+  font-size: 15px !important;
+  height: 32px !important;
+}
+
+.refresh-files-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.refresh-files-button img {
+  width: 28px;
+  height: 28px;
+}
+
+#streamed-data {
+  margin-bottom: 10px;
+}
+
+.terminal {
+  width: 90%;
+  background: #000;
+  color: #fec036;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
+.terminal pre {
+  font-size: 30px;
+  padding-inline: 20px;
+  padding-bottom: 10px;
+}
+
+.console-log-timestamp {
+  color: #fec036;
+  font-weight: bold;
+  margin-bottom: 0.2em;
+  text-align: center;
+}
+.console-log-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 2em;
+}
+.console-log-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+}
+.console-log-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 1;
+}
+.console-log-header,
+.console-log-value {
+  font-size: 0.7em;
+  font-family: 'Concert One';
+  margin-bottom: 0.1em;
+}
+
+.console-log-header {
+  color: #fec036;
+}
+.console-log-value {
+  color: #fff;
 }
