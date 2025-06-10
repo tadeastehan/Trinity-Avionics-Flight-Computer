@@ -433,20 +433,44 @@ def update_graph_outputs(selected_file, selected_column, streamed, n_intervals):
                 break
         if not x_col:
             x_col = df.columns[0]
+        graph_data = []
         if selected_column in df.columns:
-            fig = {
-                'data': [
-                    {'x': df[x_col] / 1000 if 'ms' in x_col.lower() else df[x_col], 'y': df[selected_column], 'type': 'line', 'name': selected_column}
-                ],
-                'layout': {
-                    'title': selected_column,
-                    'xaxis': {'title': x_col.replace('ms', 's').replace('MS', 's').replace('Ms', 's') if 'ms' in x_col.lower() else x_col},
-                    'yaxis': {'title': selected_column},
-                    'plot_bgcolor': '#2b2b2b',
-                    'paper_bgcolor': '#2b2b2b',
-                    'font': {'color': '#fec036'}
+            # Main line
+            graph_data.append({
+                'x': df[x_col] / 1000 if 'ms' in x_col.lower() else df[x_col],
+                'y': df[selected_column],
+                'type': 'line',
+                'name': selected_column
+            })
+            # State change markers
+            if 'State[x]' in df.columns:
+                state_col = 'State[x]'
+                state_changes = df[state_col].ne(df[state_col].shift()).fillna(False)
+                change_indices = df.index[state_changes].tolist()
+                # State label mapping
+                state_labels = {
+                    1: 'Init',
+                    2: 'Ready',
+                    3: 'Arm',
+                    4: 'Ascent',
+                    5: 'Deploy',
+                    6: 'Descent',
+                    7: 'Landed',
                 }
-            }
+                marker_x = (df.loc[change_indices, x_col] / 1000 if 'ms' in x_col.lower() else df.loc[change_indices, x_col])
+                marker_y = df.loc[change_indices, selected_column]
+                marker_text = [f"{state_labels.get(int(s), int(s))}" for s in df.loc[change_indices, state_col]]
+                graph_data.append({
+                    'x': marker_x,
+                    'y': marker_y,
+                    'mode': 'markers+text',
+                    'type': 'scatter',
+                    'marker': {'size': 12, 'color': '#fec036', 'symbol': 'diamond'},
+                    'text': marker_text,
+                    'textposition': 'top center',
+                    'name': '',  # No legend
+                    'showlegend': False
+                })
             current_val = df[selected_column].iloc[-1]
             max_val = df[selected_column].max()
             label_text = selected_column.replace('_', ' ')
@@ -460,6 +484,18 @@ def update_graph_outputs(selected_file, selected_column, streamed, n_intervals):
             elif 'altitude' in selected_column.lower():
                 current_val_string = f"{current_val:.0f}"
                 max_val_string = f"{max_val:.0f}"
+            fig = {
+                'data': graph_data,
+                'layout': {
+                    'title': selected_column,
+                    'xaxis': {'title': x_col.replace('ms', 's').replace('MS', 's').replace('Ms', 's') if 'ms' in x_col.lower() else x_col},
+                    'yaxis': {'title': selected_column},
+                    'plot_bgcolor': '#2b2b2b',
+                    'paper_bgcolor': '#2b2b2b',
+                    'font': {'color': '#fec036'},
+                    'showlegend': False
+                }
+            }
         # Stage colors
         if 'State[x]' in df.columns:
             try:
