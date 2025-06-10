@@ -97,7 +97,8 @@ header_text = html.Div(
                     options=[],  # Will be set by callback
                     value=None,  # Will be set by callback
                     clearable=False,
-                    className="header-dropdown"
+                    className="header-dropdown",
+                    multi=True  # Allow multiple selection
                 ),
                 daq.ToggleSwitch(
                     id='streamed-data',
@@ -389,7 +390,7 @@ def update_column_options(selected_file, file_options):
     ],
     prevent_initial_call=False
 )
-def update_graph_outputs(selected_file, selected_column, streamed, n_intervals):
+def update_graph_outputs(selected_file, selected_columns, streamed, n_intervals):
     ctx = dash.callback_context
     # Streaming logic
     if streamed:
@@ -415,7 +416,7 @@ def update_graph_outputs(selected_file, selected_column, streamed, n_intervals):
         "rgb(255, 247, 0)", "rgb(184, 245, 0)", "rgb(149, 226, 20)", "rgb(114, 206, 39)"
     ]
     try:
-        if not selected_file or not selected_column:
+        if not selected_file or not selected_columns:
             return fig, current_val_string, max_val_string, label, max_label, battery_val, *tuple({"background-color": color} for color in stages)
         csv_path = os.path.join(DATA_DIR, selected_file)
         df = pd.read_csv(csv_path)
@@ -436,68 +437,82 @@ def update_graph_outputs(selected_file, selected_column, streamed, n_intervals):
         if not x_col:
             x_col = df.columns[0]
         graph_data = []
-        if selected_column in df.columns:
-            # Main line
+        # Support both single and multiple selection
+        if not isinstance(selected_columns, list):
+            selected_columns = [selected_columns] if selected_columns else []
+        # Plot each selected column on a separate y-axis
+        yaxis_ids = ['y', 'y2', 'y3', 'y4', 'y5']
+        yaxis_layout = {
+            'yaxis': {'title': selected_columns[0] if selected_columns else '', 'side': 'left', 'titlefont': {'color': '#fec036'}, 'tickfont': {'color': '#fec036'}},
+        }
+        for i, col in enumerate(selected_columns):
+            axis_id = yaxis_ids[i] if i < len(yaxis_ids) else f'y{i+1}'
+            axis_ref = '' if i == 0 else axis_id
             graph_data.append({
                 'x': df[x_col] / 1000 if 'ms' in x_col.lower() else df[x_col],
-                'y': df[selected_column],
+                'y': df[col],
                 'type': 'line',
-                'name': selected_column
+                'name': col,
+                'yaxis': axis_ref
             })
-            # State change markers
-            if 'State[x]' in df.columns:
-                state_col = 'State[x]'
-                state_changes = df[state_col].ne(df[state_col].shift()).fillna(False)
-                change_indices = df.index[state_changes].tolist()
-                # State label mapping
-                state_labels = {
-                    1: 'Init',
-                    2: 'Ready',
-                    3: 'Arm',
-                    4: 'Ascent',
-                    5: 'Deploy',
-                    6: 'Descent',
-                    7: 'Landed',
+            if i > 0:
+                yaxis_layout[f'yaxis{i+1}'] = {
+                    'title': col,
+                    'side': 'right' if i % 2 == 1 else 'left',
+                    'overlaying': 'y',
+                    'titlefont': {'color': '#fec036'},
+                    'tickfont': {'color': '#fec036'}
                 }
-                marker_x = (df.loc[change_indices, x_col] / 1000 if 'ms' in x_col.lower() else df.loc[change_indices, x_col])
-                marker_y = df.loc[change_indices, selected_column]
-                marker_text = [f"{state_labels.get(int(s), int(s))}" for s in df.loc[change_indices, state_col]]
-                graph_data.append({
-                    'x': marker_x,
-                    'y': marker_y,
-                    'mode': 'markers+text',
-                    'type': 'scatter',
-                    'marker': {'size': 12, 'color': '#fec036', 'symbol': 'diamond'},
-                    'text': marker_text,
-                    'textposition': 'top center',
-                    'name': '',  # No legend
-                    'showlegend': False
-                })
-            current_val = df[selected_column].iloc[-1]
-            max_val = df[selected_column].max()
-            label_text = selected_column.replace('_', ' ')
+        # State change markers only for the first selected column
+        if selected_columns and 'State[x]' in df.columns:
+            state_col = 'State[x]'
+            state_changes = df[state_col].ne(df[state_col].shift()).fillna(False)
+            change_indices = df.index[state_changes].tolist()
+            state_labels = {
+                1: 'Init', 2: 'Ready', 3: 'Arm', 4: 'Ascent', 5: 'Deploy', 6: 'Descent', 7: 'Landed',
+            }
+            marker_x = (df.loc[change_indices, x_col] / 1000 if 'ms' in x_col.lower() else df.loc[change_indices, x_col])
+            marker_y = df.loc[change_indices, selected_columns[0]]
+            marker_text = [f"{state_labels.get(int(s), int(s))}" for s in df.loc[change_indices, state_col]]
+            graph_data.append({
+                'x': marker_x,
+                'y': marker_y,
+                'mode': 'markers+text',
+                'type': 'scatter',
+                'marker': {'size': 12, 'color': '#fec036', 'symbol': 'diamond'},
+                'text': marker_text,
+                'textposition': 'top center',
+                'name': '',
+                'showlegend': False,
+                'yaxis': ''
+            })
+        # Current/max values for the first column
+        if selected_columns and selected_columns[0] in df.columns:
+            current_val = df[selected_columns[0]].iloc[-1]
+            max_val = df[selected_columns[0]].max()
+            label_text = selected_columns[0].replace('_', ' ')
             current_val_string = f"{current_val:.2f}"
             max_val_string = f"{max_val:.2f}"
             label = {'label': label_text, 'style': {'fontSize': 24}}
             max_label = {'label': f"Maximum {label_text}", 'style': {'fontSize': 24}}
-            if 'pressure' in selected_column.lower():
+            if 'pressure' in selected_columns[0].lower():
                 current_val_string = f"{current_val:.0f}"
                 max_val_string = f"{max_val:.0f}"
-            elif 'altitude' in selected_column.lower():
+            elif 'altitude' in selected_columns[0].lower():
                 current_val_string = f"{current_val:.0f}"
                 max_val_string = f"{max_val:.0f}"
-            fig = {
-                'data': graph_data,
-                'layout': {
-                    'title': selected_column,
-                    'xaxis': {'title': x_col.replace('ms', 's').replace('MS', 's').replace('Ms', 's') if 'ms' in x_col.lower() else x_col},
-                    'yaxis': {'title': selected_column},
-                    'plot_bgcolor': '#2b2b2b',
-                    'paper_bgcolor': '#2b2b2b',
-                    'font': {'color': '#fec036'},
-                    'showlegend': False
-                }
+        fig = {
+            'data': graph_data,
+            'layout': {
+                'title': ', '.join(selected_columns),
+                'xaxis': {'title': x_col.replace('ms', 's').replace('MS', 's').replace('Ms', 's') if 'ms' in x_col.lower() else x_col},
+                'plot_bgcolor': '#2b2b2b',
+                'paper_bgcolor': '#2b2b2b',
+                'font': {'color': '#fec036'},
+                'showlegend': False,
+                **yaxis_layout
             }
+        }
         # Stage colors
         if 'State[x]' in df.columns:
             try:
