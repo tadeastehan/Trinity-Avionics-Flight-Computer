@@ -254,8 +254,7 @@ stage_button = html.Div(
 
 console_log = html.Div(
     children=[
-        html.H1("Recieved data", id="recieved_text"),     
-        html.Div( className="terminal", children=[html.Pre("", id='console-log',)])
+        html.Div( className="terminal", children=[html.Pre("", id='console-log')]),
     ]
 )
 
@@ -274,6 +273,7 @@ app.layout = html.Div(
         html.Link(href='https://fonts.googleapis.com/css?family=Concert One',rel='stylesheet'),
         dcc.Interval(id='map-update-interval', interval=3000, n_intervals=0),  # Update map every 3 seconds
         dcc.Interval(id='graph-update-interval', interval=300, n_intervals=0),  # Update graph every 0.3 seconds
+        dcc.Interval(id='console-log-interval', interval=1000, n_intervals=0),  # Update console log every second
         html.Div(
             className="grid-container",
             children=[
@@ -670,6 +670,42 @@ def teleport_map(n_rocket, n_home, current_center):
         pos = get_start_marker_position()
         return pos
     return current_center
+
+# Special callback to print timestamp and latest row in formatted style, updating every 1 second
+@app.callback(
+    Output('console-log', 'children'),
+    [Input('file-dropdown', 'value'), Input('console-log-interval', 'n_intervals')]
+)
+def update_console_log_fancy(selected_file, n_intervals):
+    import time
+    if not selected_file:
+        return ''
+    csv_path = os.path.join(DATA_DIR, selected_file)
+    try:
+        with open(csv_path, 'r', encoding='utf-8') as f:
+            header_line = f.readline().strip()
+        headers = [h.strip() for h in header_line.split(',')]
+        df = pd.read_csv(csv_path)
+        if not df.empty:
+            latest_row = df.iloc[-1]
+            timestamp = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime())
+            # Build two columns: left (headers), right (values)
+            left_col = []
+            right_col = []
+            for h, v in zip(headers, latest_row.values):
+                left_col.append(html.Div(h, className='console-log-header'))
+                right_col.append(html.Div(str(v), className='console-log-value'))
+            return html.Div([
+                html.Div(timestamp, className='console-log-timestamp'),
+                html.Div([
+                    html.Div(left_col, className='console-log-left'),
+                    html.Div(right_col, className='console-log-right')
+                ], className='console-log-row')
+            ])
+        else:
+            return f"No data rows."
+    except Exception as e:
+        return f"Error reading file: {e}"
 
 if __name__ == '__main__': 
     app.run(debug=True, port=8050)

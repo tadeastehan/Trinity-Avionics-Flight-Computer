@@ -212,23 +212,6 @@ label {
   margin-top: -7.5px; /* Half of the arrow's height to vertically center it */
 }
 
-.terminal {
-  width: 90%;
-  background: #000;
-  color: #fec036;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-.terminal pre {
-  font-size: 30px;
-  margin-left: 50px;
-}
-
-#recieved_text {
-  color: #fec036;
-}
-
 #map {
   border-radius: 10px;
 }
@@ -296,4 +279,56 @@ label {
 
 #streamed-data {
   margin-bottom: 10px;
+}
+
+.terminal {
+  width: 90%;
+  background: #000;
+  color: #fec036;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+
+.terminal pre {
+  font-size: 30px;
+  padding-inline: 20px;
+  padding-bottom: 10px;
+}
+
+.console-log-timestamp {
+  color: #fec036;
+  font-weight: bold;
+  margin-bottom: 0.2em;
+  text-align: center;
+}
+.console-log-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 2em;
+}
+.console-log-left {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  flex: 1;
+}
+.console-log-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: 1;
+}
+.console-log-header,
+.console-log-value {
+  font-size: 0.7em;
+  font-family: 'Concert One';
+  margin-bottom: 0.1em;
+}
+
+.console-log-header {
+  color: #fec036;
+}
+.console-log-value {
+  color: #fff;
 }
