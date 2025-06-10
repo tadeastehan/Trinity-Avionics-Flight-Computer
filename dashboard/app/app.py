@@ -73,35 +73,38 @@ header_text = html.Div(
     className="item2",
     id="header_text",
     children=[
-        html.P("Telemetry", style={"marginBottom": "8px", "fontSize": 50, "color": "#fec036", "textAlign": "left"}),
+        html.P("Telemetry", id="header_text_p", className="header-title"),
         html.Div(
-            style={"display": "flex", "alignItems": "center", "gap": "8px"},
+            id="header_text_controls",
+            className="header-text-controls",
             children=[
                 dcc.Dropdown(
                     id='file-dropdown',
                     options=[],  # Will be set by callback
                     value=None,  # Will be set by callback
                     clearable=False,
-                    style={"width": "160px", "fontSize": 15, "height": "32px"}
+                    className="header-dropdown"
                 ),
                 html.Button(
                     id='refresh-files-button',
                     title='Refresh file list',
                     children=html.Img(src='assets/icons/database-refresh-outline.svg'),
                     n_clicks=0,
+                    className="refresh-files-button"
                 ),
                 dcc.Dropdown(
                     id='data-column-dropdown',
                     options=[],  # Will be set by callback
                     value=None,  # Will be set by callback
                     clearable=False,
-                    style={"width": "160px", "fontSize": 15, "height": "32px"}
+                    className="header-dropdown"
                 ),
                 daq.ToggleSwitch(
                     id='streamed-data',
                     color='#fec036',
                     label='Stream',
-                    value=False
+                    value=False,
+                    className="header-toggle-switch"
                 ),
             ]
         )
@@ -122,7 +125,6 @@ start_map_pin = dict(
 
 map_div = html.Div(
     className="item3",
-    style={"position": "relative"},
     children=[
         dl.Map(
             [
@@ -259,16 +261,16 @@ console_log = html.Div(
 app = dash.Dash(__name__,
     meta_tags=[
         {'name': 'viewport', 'content': 'width=device-width, initial-scale=1.0'}
-    ],)
+    ],
+    title='Space Force Telemetry',
+    update_title='Space Force Telemetry')
 
 app._favicon = r'assets/imgs/favicon.ico'
-app.title = "Space Force Telemetry"
 
 app.layout = html.Div(
     id='root',
     children=[
         html.Link(href='https://fonts.googleapis.com/css?family=Concert One',rel='stylesheet'),
-        html.Div(id='zoom-display', style={'margin-top': '10px'}),
         dcc.Interval(id='map-update-interval', interval=3000, n_intervals=0),  # Update map every 3 seconds
         dcc.Interval(id='graph-update-interval', interval=300, n_intervals=0),  # Update graph every 0.3 seconds
         html.Div(

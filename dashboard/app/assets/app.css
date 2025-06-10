@@ -2,6 +2,7 @@ body {
   background-color: #2b2b2b;
   font-family: 'Concert One';
   font-style: normal;
+  margin-top: 10px;
 }
 
 p,
@@ -26,6 +27,7 @@ label {
 }
 .item3 {
   grid-area: item3;
+  position: relative;
 }
 .item4 {
   grid-area: item4;
@@ -171,25 +173,11 @@ label {
   color: #2b2b2b;
 }
 
-#header_text {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-}
-
-#header_text > div {
-  display: flex;
-  flex-direction: row;
-  gap: 8px;
-  margin-top: 0px;
-  margin-bottom: 0px;
-}
-
-#header_text > p {
-  width: 100%;
-  text-align: center;
+#header_text_p {
   margin-bottom: 8px;
-  margin-left: 52px; /* Move the Telemetry title right to center with dropdowns */
+  font-size: 50px;
+  color: #fec036;
+  text-align: left;
 }
 
 .stage_button_container {
@@ -263,4 +251,49 @@ label {
 #control-panel-battery-component > div > div > div > div > label {
   font-size: 1.2em !important;
   vertical-align: middle;
+}
+
+.header-title {
+  color: #fec036;
+  font-size: 50px;
+  margin-bottom: 8px;
+  /* Center horizontally above the controls */
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 48px; /* Adjust as needed to match the controls' height */
+  width: 100%;
+  text-align: center;
+  /* Remove left alignment from previous style */
+}
+
+.header-text-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+}
+
+.header-dropdown {
+  width: 160px !important;
+  font-size: 15px !important;
+  height: 32px !important;
+}
+
+.refresh-files-button {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.refresh-files-button img {
+  width: 28px;
+  height: 28px;
+}
+
+#streamed-data {
+  margin-bottom: 10px;
 }
