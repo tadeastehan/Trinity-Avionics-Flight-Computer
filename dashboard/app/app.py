@@ -1,5 +1,6 @@
 import os, json, segno, webbrowser, dash
 from dash import html, dcc
+import dash
 import dash_leaflet as dl
 import dash_daq as daq
 from dotenv import load_dotenv
@@ -41,7 +42,6 @@ def get_rocket_position():
 
 load_env_file()
 preferences_json = load_preferences()
-print(f"Loaded preferences: {preferences_json}")
 
 logo = html.Img(
     className="item1",
@@ -75,23 +75,32 @@ header_text = html.Div(
     children=[
         html.P("Telemetry", style={"marginBottom": "8px", "fontSize": 50, "color": "#fec036", "textAlign": "left"}),
         html.Div(
+            style={"display": "flex", "alignItems": "center", "gap": "8px"},
             children=[
                 dcc.Dropdown(
                     id='file-dropdown',
-                    options=file_options,
-                    value=file_options[0]['value'] if file_options else None,
+                    options=[],  # Will be set by callback
+                    value=None,  # Will be set by callback
                     clearable=False,
                     style={"width": "160px", "fontSize": 15, "height": "32px"}
                 ),
+                html.Button(
+                    id='refresh-files-button',
+                    title='Refresh file list',
+                    children=html.Img(src='assets/icons/database-refresh-outline.svg'),
+                    n_clicks=0,
+                ),
                 dcc.Dropdown(
                     id='data-column-dropdown',
-                    options=get_column_options(file_options[0]['value']) if file_options else [],
-                    value=get_column_options(file_options[0]['value'])[0]['value'] if file_options and get_column_options(file_options[0]['value']) else None,
+                    options=[],  # Will be set by callback
+                    value=None,  # Will be set by callback
                     clearable=False,
                     style={"width": "160px", "fontSize": 15, "height": "32px"}
                 ),
                 daq.ToggleSwitch(
                     id='streamed-data',
+                    color='#fec036',
+                    label='Stream',
                     value=False
                 ),
             ]
@@ -198,7 +207,7 @@ altitude_number = html.Div(
     id='control-panel-altitude-component-number',
     children=[
         daq.LEDDisplay(
-            id='control-panel-altitude-number',
+            id='control-panel-current-number',
             value='000.00',
             label={'label':"Altitude", 'style':{'fontSize':24}},
             size=70,
@@ -214,7 +223,7 @@ max_altitude_number = html.Div(
     id='control-panel-max-altitude-component-number',
     children=[
         daq.LEDDisplay(
-            id='control-panel-max-altitude-number',
+            id='control-panel-max-number',
             value='000.00',
             label={'label':"Maximum Altitude", 'style':{'fontSize':24}},
             size=70,
@@ -260,9 +269,8 @@ app.layout = html.Div(
     children=[
         html.Link(href='https://fonts.googleapis.com/css?family=Concert One',rel='stylesheet'),
         html.Div(id='zoom-display', style={'margin-top': '10px'}),
-        dcc.Interval(id='map-update-interval', interval=3000, n_intervals=0),
-        dcc.Interval(id='slow-update-interval', interval=20*60*1000, n_intervals=0),  # 20 minutes
-        dcc.Interval(id='fast-update-interval', interval=1000, n_intervals=0),  # 1 second
+        dcc.Interval(id='map-update-interval', interval=3000, n_intervals=0),  # Update map every 3 seconds
+        dcc.Interval(id='graph-update-interval', interval=300, n_intervals=0),  # Update graph every 0.3 seconds
         html.Div(
             className="grid-container",
             children=[
@@ -331,28 +339,93 @@ def open_qr_code_tab(n_clicks):
         webbrowser.open_new_tab("http://127.0.0.1:8050/assets/qr_code.png")
     return None
 
-# Dynamically update column dropdown when file changes
+# Remove static file_options, and add a function to scan files
+
+def scan_file_options():
+    return [
+        {"label": f, "value": f} for f in os.listdir(DATA_DIR) if f.endswith('.csv')
+    ]
+
+# Callback to update file-dropdown options and value
+@app.callback(
+    [Output('file-dropdown', 'options'), Output('file-dropdown', 'value')],
+    [Input('refresh-files-button', 'n_clicks')],
+    prevent_initial_call=False
+)
+def update_file_options(n_clicks):
+    options = scan_file_options()
+    value = options[0]['value'] if options else None
+    return options, value
+
+# Update data-column-dropdown callback to use State for file-dropdown options
 @app.callback(
     [Output('data-column-dropdown', 'options'), Output('data-column-dropdown', 'value')],
-    [Input('file-dropdown', 'value')]
+    [Input('file-dropdown', 'value')],
+    [State('file-dropdown', 'options')]
 )
-def update_column_options(selected_file):
+def update_column_options(selected_file, file_options):
     options = get_column_options(selected_file)
     value = options[0]['value'] if options else None
     return options, value
 
-# Combined callback for file and column dropdowns
+# Combined callback for file, column, streamed toggle, and interval
 @app.callback(
-    Output('control-panel-altitude-graph', 'figure'),
-    [Input('file-dropdown', 'value'), Input('data-column-dropdown', 'value')]
+    [
+        Output('control-panel-altitude-graph', 'figure'),
+        Output('control-panel-current-number', 'value'),
+        Output('control-panel-max-number', 'value'),
+        Output('control-panel-current-number', 'label'),
+        Output('control-panel-max-number', 'label'),
+        Output('control-panel-battery-component', 'value'),
+        *[Output(f'stage{i+1}', 'style') for i in range(7)],
+    ],
+    [
+        Input('file-dropdown', 'value'),
+        Input('data-column-dropdown', 'value'),
+        Input('streamed-data', 'value'),
+        Input('graph-update-interval', 'n_intervals')
+    ],
+    prevent_initial_call=False
 )
-def update_graph(selected_file, selected_column):
+def update_graph_outputs(selected_file, selected_column, streamed, n_intervals):
+    ctx = dash.callback_context
+    # Streaming logic
+    if streamed:
+        if ctx.triggered and any('graph-update-interval' in t['prop_id'] for t in ctx.triggered):
+            pass
+        else:
+            raise dash.exceptions.PreventUpdate
+    else:
+        if ctx.triggered and any(('file-dropdown' in t['prop_id'] or 'data-column-dropdown' in t['prop_id']) for t in ctx.triggered):
+            pass
+        else:
+            raise dash.exceptions.PreventUpdate
+    # Defaults
+    fig = {}
+    current_val_string = '000.00'
+    max_val_string = '000.00'
+    label = {'label': 'Value', 'style': {'fontSize': 24}}
+    max_label = {'label': 'Maximum Value', 'style': {'fontSize': 24}}
+    battery_val = 0
+    stages = ["blanchedalmond"] * 7
+    stage_colors = [
+        "rgb(255, 153, 0)", "rgb(255, 200, 0)", "rgb(255, 224, 0)",
+        "rgb(255, 247, 0)", "rgb(184, 245, 0)", "rgb(149, 226, 20)", "rgb(114, 206, 39)"
+    ]
     try:
         if not selected_file or not selected_column:
-            return {}
+            return fig, current_val_string, max_val_string, label, max_label, battery_val, *tuple({"background-color": color} for color in stages)
         csv_path = os.path.join(DATA_DIR, selected_file)
         df = pd.read_csv(csv_path)
-        # Use timestamp/time column if available
+        # Battery voltage
+        if 'Battery[V]' in df.columns:
+            try:
+                battery_val = float(df['Battery[V]'].iloc[-1])
+            except Exception:
+                battery_val = 0
+        else:
+            battery_val = 0
+        # Graph
         x_col = None
         for col in df.columns:
             if col.lower() in ['time [ms]', 'time [delta_ms]', 'timestamp', 'time']:
@@ -360,72 +433,80 @@ def update_graph(selected_file, selected_column):
                 break
         if not x_col:
             x_col = df.columns[0]
-        if selected_column not in df.columns:
-            return {}
-        fig = {
-            'data': [
-                {'x': df[x_col] / 1000 if 'ms' in x_col.lower() else df[x_col], 'y': df[selected_column], 'type': 'line', 'name': selected_column}
-            ],
-            'layout': {
-                'title': selected_column,
-                'xaxis': {'title': x_col.replace('ms', 's').replace('MS', 's').replace('Ms', 's') if 'ms' in x_col.lower() else x_col},
-                'yaxis': {'title': selected_column},
-                'plot_bgcolor': '#2b2b2b',
-                'paper_bgcolor': '#2b2b2b',
-                'font': {'color': '#fec036'}
-            }
-        }
-        return fig
-    except Exception as e:
-        return {}
-
-@app.callback(
-    [Output('control-panel-altitude-number', 'value'),
-     Output('control-panel-max-altitude-number', 'value'),
-     Output('control-panel-altitude-number', 'label'),
-     Output('control-panel-max-altitude-number', 'label')],
-    [Input('file-dropdown', 'value'), Input('data-column-dropdown', 'value')]
-)
-def update_altitude_numbers(selected_file, selected_column):
-    try:
-        if not selected_file or not selected_column:
-            return '000.00', '000.00', {'label': 'Value', 'style': {'fontSize': 24}}, {'label': 'Maximum Value', 'style': {'fontSize': 24}}
-        csv_path = os.path.join(DATA_DIR, selected_file)
-        df = pd.read_csv(csv_path)
         if selected_column in df.columns:
-            min_val = df[selected_column].min()
+            fig = {
+                'data': [
+                    {'x': df[x_col] / 1000 if 'ms' in x_col.lower() else df[x_col], 'y': df[selected_column], 'type': 'line', 'name': selected_column}
+                ],
+                'layout': {
+                    'title': selected_column,
+                    'xaxis': {'title': x_col.replace('ms', 's').replace('MS', 's').replace('Ms', 's') if 'ms' in x_col.lower() else x_col},
+                    'yaxis': {'title': selected_column},
+                    'plot_bgcolor': '#2b2b2b',
+                    'paper_bgcolor': '#2b2b2b',
+                    'font': {'color': '#fec036'}
+                }
+            }
+            current_val = df[selected_column].iloc[-1]
             max_val = df[selected_column].max()
-            label = selected_column.replace('_', ' ')
-            # If the selected column is pressure, use smaller font size
-            min_val_string = f"{min_val:.2f}"
+            label_text = selected_column.replace('_', ' ')
+            current_val_string = f"{current_val:.2f}"
             max_val_string = f"{max_val:.2f}"
-            label_style = {'fontSize': 24}
+            label = {'label': label_text, 'style': {'fontSize': 24}}
+            max_label = {'label': f"Maximum {label_text}", 'style': {'fontSize': 24}}
             if 'pressure' in selected_column.lower():
-                min_val_string = f"{min_val:.0f}"
+                current_val_string = f"{current_val:.0f}"
                 max_val_string = f"{max_val:.0f}"
             elif 'altitude' in selected_column.lower():
-                min_val_string = f"{min_val:.0f}"
+                current_val_string = f"{current_val:.0f}"
                 max_val_string = f"{max_val:.0f}"
-                
-            return f"{min_val_string}", f"{max_val_string}", {'label': label, 'style': label_style}, {'label': f"Maximum {label}", 'style': label_style}
-        else:
-            return '000.00', '000.00', {'label': 'Value', 'style': {'fontSize': 24}}, {'label': 'Maximum Value', 'style': {'fontSize': 24}}
+        # Stage colors
+        if 'State[x]' in df.columns:
+            try:
+                stage_number = int(df['State[x]'].iloc[-1])
+                if 1 <= stage_number <= 7:
+                    stages[:stage_number] = stage_colors[:stage_number]
+            except Exception:
+                pass
     except Exception:
-        return '000.00', '000.00', {'label': 'Value', 'style': {'fontSize': 24}}, {'label': 'Maximum Value', 'style': {'fontSize': 24}}
+        pass
+    return fig, current_val_string, max_val_string, label, max_label, battery_val, *tuple({"background-color": color} for color in stages)
 
+# Callback for map
 @app.callback(
     Output('map', 'children'),
-    [Input('file-dropdown', 'value')]
+    [
+        Input('file-dropdown', 'value'),
+        Input('data-column-dropdown', 'value'),
+        Input('streamed-data', 'value'),
+        Input('map-update-interval', 'n_intervals')
+    ],
+    prevent_initial_call=False
 )
-def update_map_points(selected_file):
+def update_map_outputs(selected_file, selected_column, streamed, n_intervals):
+    ctx = dash.callback_context
+    # Streaming logic
+    if streamed:
+        if ctx.triggered and any('map-update-interval' in t['prop_id'] for t in ctx.triggered):
+            pass
+        else:
+            raise dash.exceptions.PreventUpdate
+    else:
+        if ctx.triggered and any(('file-dropdown' in t['prop_id'] or 'data-column-dropdown' in t['prop_id']) for t in ctx.triggered):
+            pass
+        else:
+            raise dash.exceptions.PreventUpdate
+    # Map logic
+    lat_col = None
+    lon_col = None
+    time_col = None
+    map_children = []
+    rocket_marker_position = get_rocket_position()
     try:
-        if not selected_file:
-            return dash.no_update
+        if not selected_file or not selected_column:
+            return map_children
         csv_path = os.path.join(DATA_DIR, selected_file)
         df = pd.read_csv(csv_path)
-        lat_col = None
-        lon_col = None
-        time_col = None
         for col in df.columns:
             if 'latitude' in col.lower():
                 lat_col = col
@@ -436,36 +517,26 @@ def update_map_points(selected_file):
         points = []
         if lat_col and lon_col and time_col:
             valid = df[(df[lat_col] != 0) & (df[lon_col] != 0)].copy()
-            # Calculate frequency (count) for each unique (lat, lon)
             freq_df = valid.groupby([lat_col, lon_col], as_index=False).size()
             freq_df.rename(columns={'size': 'freq'}, inplace=True)
-            # Get the latest timestamp for each (lat, lon)
             latest_time = valid.groupby([lat_col, lon_col], as_index=False)[time_col].max()
             merged = pd.merge(freq_df, latest_time, on=[lat_col, lon_col])
             freq_min = merged['freq'].min()
             freq_max = merged['freq'].max()
             t_min = merged[time_col].min()
-            # Find the first timestamp where the latitude stays the same for the rest of the data
             last_lat = valid[lat_col].iloc[-1]
             last_lon = valid[lon_col].iloc[-1]
-            # Find the first occurrence of this last position
             mask = (valid[lat_col] == last_lat) & (valid[lon_col] == last_lon)
             idx_first = mask.idxmax() if mask.any() else valid.index[-1]
             t_max = valid.loc[idx_first, time_col]
-
             def time_to_color(t):
-                # 5-color gradient: red → orange → yellow → light green → green
                 colors = [
-                    (255, 0, 0),      # red
-                    (255, 167, 0),    # orange
-                    (255, 244, 0),    # yellow
-                    (163, 255, 0),    # light green
-                    (44, 186, 0)      # green
+                    (255, 0, 0), (255, 167, 0), (255, 244, 0), (163, 255, 0), (44, 186, 0)
                 ]
                 if t_max == t_min:
                     return 'rgb(255,0,0)'
                 ratio = (t - t_min) / (t_max - t_min)
-                ratio = max(0, min(ratio, 1))  # Clamp between 0 and 1
+                ratio = max(0, min(ratio, 1))
                 n = len(colors) - 1
                 seg = min(int(ratio * n), n - 1)
                 seg_start = seg / n
@@ -477,15 +548,12 @@ def update_map_points(selected_file):
                 g = int(g1 + (g2 - g1) * local_ratio)
                 b = int(b1 + (b2 - b1) * local_ratio)
                 return f'rgb({r},{g},{b})'
-
-            # Find the last valid position for the rocket marker
             if not valid.empty:
                 last_valid_lat = valid[lat_col].iloc[-1]
                 last_valid_lon = valid[lon_col].iloc[-1]
                 rocket_marker_position = [last_valid_lat, last_valid_lon]
             else:
                 rocket_marker_position = get_rocket_position()
-
             points = [
                 dl.CircleMarker(
                     center=[row[lat_col], row[lon_col]],
@@ -497,10 +565,8 @@ def update_map_points(selected_file):
                 )
                 for _, row in merged.sort_values(time_col).iterrows()
             ]
-            # Recreate the map with points and existing layers
             preferences_json["rocket_position"] = rocket_marker_position
-            
-            return [
+            map_children = [
                 dl.TileLayer(id="map-tiles",
                              url=f'https://api.mapy.cz/v1/maptiles/{{get_style()}}/256/{{z}}/{{x}}/{{y}}?apikey={{get_api_key()}}'),
                 dl.Marker(id="start-marker", position=get_start_marker_position(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
@@ -513,16 +579,24 @@ def update_map_points(selected_file):
                 for _, row in df.iterrows()
                 if row[lat_col] != 0 and row[lon_col] != 0
             ]
-        # Recreate the map with points and existing layers
-        return [
-            dl.TileLayer(id="map-tiles",
-                         url=f'https://api.mapy.cz/v1/maptiles/{{get_style()}}/256/{{z}}/{{x}}/{{y}}?apikey={{get_api_key()}}'),
-            dl.Marker(id="start-marker", position=get_start_marker_position(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
-            dl.Marker(id="rocket-marker", position=rocket_marker_position, children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
-            dl.Circle(center=rocket_marker_position, radius=5, color='rgba(252, 186, 3, 0.5)', id='rocket-radius'),
-        ] + points
+            map_children = [
+                dl.TileLayer(id="map-tiles",
+                             url=f'https://api.mapy.cz/v1/maptiles/{{get_style()}}/256/{{z}}/{{x}}/{{y}}?apikey={{get_api_key()}}'),
+                dl.Marker(id="start-marker", position=get_start_marker_position(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
+                dl.Marker(id="rocket-marker", position=rocket_marker_position, children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
+                dl.Circle(center=rocket_marker_position, radius=5, color='rgba(252, 186, 3, 0.5)', id='rocket-radius'),
+            ] + points
+        else:
+            map_children = [
+                dl.TileLayer(id="map-tiles",
+                             url=f'https://api.mapy.cz/v1/maptiles/{{get_style()}}/256/{{z}}/{{x}}/{{y}}?apikey={{get_api_key()}}'),
+                dl.Marker(id="start-marker", position=get_start_marker_position(), children=[dl.Tooltip("Launch")], icon=start_map_pin),
+                dl.Marker(id="rocket-marker", position=rocket_marker_position, children=[dl.Tooltip("Rocket")], icon=rocket_map_pin),
+                dl.Circle(center=rocket_marker_position, radius=5, color='rgba(252, 186, 3, 0.5)', id='rocket-radius'),
+            ]
     except Exception:
-        return dash.no_update
+        pass
+    return map_children
 
 @app.callback(
     Output('map', 'center'),
@@ -543,28 +617,6 @@ def teleport_map(n_rocket, n_home, current_center):
         pos = get_start_marker_position()
         return pos
     return current_center
-
-@app.callback(
-    [Output(f'stage{i+1}', 'style') for i in range(7)],
-    [Input('file-dropdown', 'value')]
-)
-def update_stage_colors(selected_file):
-    stages = ["blanchedalmond"] * 7  # startup colors
-    stage_colors = [
-        "rgb(255, 153, 0)", "rgb(255, 200, 0)", "rgb(255, 224, 0)",
-        "rgb(255, 247, 0)", "rgb(184, 245, 0)", "rgb(149, 226, 20)", "rgb(114, 206, 39)"
-    ]
-    if selected_file:
-        csv_path = os.path.join(DATA_DIR, selected_file)
-        try:
-            df = pd.read_csv(csv_path)
-            if 'State[x]' in df.columns:
-                stage_number = int(df['State[x]'].iloc[-1])
-                if 1 <= stage_number <= 7:
-                    stages[:stage_number] = stage_colors[:stage_number]
-        except Exception:
-            pass
-    return tuple({"background-color": color} for color in stages)
 
 if __name__ == '__main__': 
     app.run(debug=True, port=8050)

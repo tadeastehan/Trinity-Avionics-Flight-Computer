@@ -54,6 +54,27 @@ label {
   height: 640px;
 }
 
+#refresh-files-button {
+  width: 35px;
+  height: 35px;
+  background: none;
+  border: none;
+  padding: 2px;
+  margin: 10px 7px 0px 0px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+#refresh-files-button:hover {
+  background: #333;
+  border-radius: 50%;
+}
+#refresh-files-button img {
+  width: 30px;
+  height: 30px;
+  filter: invert(80%) sepia(70%) saturate(808%) hue-rotate(329deg)
+    brightness(103%) contrast(100%);
+}
+
 #header_text {
   text-align: left;
   font-size: 50px;
