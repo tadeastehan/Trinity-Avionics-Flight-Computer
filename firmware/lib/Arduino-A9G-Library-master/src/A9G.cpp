@@ -1464,3 +1464,99 @@ bool GSM::SupportedNetworkSettings()
         return false;
     }
 }
+
+/*###############################################*/
+/***********  NON-BLOCKING FUNCTIONS *************/
+/*###############################################*/
+
+void GSM::bIsReadyNoWait()
+{
+    _gsm->println("AT");
+    if (_debug)
+    {
+        Serial.println(F("GSM Ready (no wait)"));
+    }
+}
+
+void GSM::ReleaseGPSUartNoWait()
+{
+    _gsm->println("AT+GPSUPGRADE=1");
+}
+
+void GSM::SupportedNetworkSettingsNoWait()
+{
+    _gsm->println("AT+CREG?");
+}
+
+void GSM::AttachToGPRSNoWait()
+{
+    _gsm->println("AT+CGATT=1");
+}
+
+void GSM::SetAPNNoWait(const char pdp_type[], const char apn[])
+{
+    _gsm->print("AT+CGDCONT=1,\"");
+    _gsm->print(pdp_type);
+    _gsm->print("\",\"");
+    _gsm->print(apn);
+    _gsm->println("\"");
+}
+
+void GSM::ActivatePDPNoWait()
+{
+    _gsm->println("AT+CGACT=1,1");
+}
+
+void GSM::ConnectToBrokerNoWait(const char broker[], int port, const char user[], const char pass[], const char id[], uint8_t keep_alive, uint16_t clean_session)
+{
+    _gsm->print("AT+MQTTCONN=\"");
+    _gsm->print(broker);
+    _gsm->print("\",");
+    _gsm->print(port);
+    _gsm->print(",\"");
+    _gsm->print(id);
+    _gsm->print("\",");
+    _gsm->print(keep_alive);
+    _gsm->print(",");
+    _gsm->print(clean_session);
+    _gsm->print(",\"");
+    _gsm->print(user);
+    _gsm->print("\",\"");
+    _gsm->print(pass);
+    _gsm->println("\"");
+}
+
+void GSM::ConnectToBrokerNoWait(const char broker[], int port, const char id[], uint8_t keep_alive, uint16_t clean_session)
+{
+    _gsm->print("AT+MQTTCONN=\"");
+    _gsm->print(broker);
+    _gsm->print("\",");
+    _gsm->print(port);
+    _gsm->print(",\"");
+    _gsm->print(id);
+    _gsm->print("\",");
+    _gsm->print(keep_alive);
+    _gsm->print(",");
+    _gsm->println(clean_session);
+}
+
+void GSM::ConnectToBrokerNoWait(const char broker[], int port)
+{
+    char id[10] = "\0";
+    sprintf(id, "%d", random(10000, 100000));
+    _gsm->print("AT+MQTTCONN=\"");
+    _gsm->print(broker);
+    _gsm->print("\",");
+    _gsm->print(port);
+    _gsm->print(",\"");
+    _gsm->print(id);
+    _gsm->print("\",");
+    _gsm->print(120);
+    _gsm->print(",");
+    _gsm->println(0);
+}
+
+void GSM::ReadCCIDNoWait()
+{
+    _gsm->println("AT+CCID");
+}

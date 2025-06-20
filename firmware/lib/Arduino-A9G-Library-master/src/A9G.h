@@ -148,6 +148,14 @@ public:
     bool bIsReady();
 
     /**
+     * @brief Checks if the GSM module is ready (non-blocking version).
+     *
+     * Sends an "AT" command to the GSM module without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void bIsReadyNoWait();
+
+    /**
      * @brief Waits for the GSM module to become ready.
      *
      * This function sends an "AT" command to the GSM module and waits for a response indicating readiness.
@@ -165,6 +173,14 @@ public:
 
     void ReadCSQ();
     void ReadCCID();
+
+    /**
+     * @brief Read the CCID (non-blocking version).
+     *
+     * Sends the AT+CCID command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void ReadCCIDNoWait();
 
     /*###############################################*/
     /*********************  GPRS *********************/
@@ -185,6 +201,14 @@ public:
     bool AttachToGPRS();
 
     /**
+     * @brief Attempts to attach the GSM module to GPRS (non-blocking version).
+     *
+     * Sends the AT+CGATT=1 command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void AttachToGPRSNoWait();
+
+    /**
      * @brief Attempts to detach the GSM module from GPRS (General Packet Radio Service).
      *
      * @return true if the detachment is successful, false otherwise.
@@ -201,6 +225,16 @@ public:
     bool SetAPN(const char pdp_type[], const char apn[]);
 
     /**
+     * @brief Sets the Access Point Name (APN) and PDP (Packet Data Protocol) type for GPRS connection (non-blocking version).
+     *
+     * @param pdp_type The PDP type.
+     * @param apn The Access Point Name.
+     * Sends the AT+CGDCONT command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void SetAPNNoWait(const char pdp_type[], const char apn[]);
+
+    /**
      * @brief Activates the Packet Data Protocol (PDP) context for GPRS connection.
      *
      * @return true if the PDP context is activated successfully, false otherwise.
@@ -208,12 +242,12 @@ public:
     bool ActivatePDP();
 
     /**
-     * @brief Deactivates the Packet Data Protocol (PDP) context for GPRS connection.
-     * @todo Need to finish this function.
+     * @brief Activates the Packet Data Protocol (PDP) context for GPRS connection (non-blocking version).
      *
-     * @return true if the PDP context is deactivated successfully, false otherwise.
+     * Sends the AT+CGACT=1,1 command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
      */
-    bool DeactivatePDP();
+    void ActivatePDPNoWait();
 
     /*###############################################*/
     /*********************  MQTT *********************/
@@ -232,13 +266,42 @@ public:
     bool ConnectToBroker(const char broker[], int port, const char id[], uint8_t keep_alive, uint16_t clean_session);
 
     /**
-     * @brief Connects to the MQTT broker with the specified parameters.
+     * @brief Connects to the MQTT broker with the specified parameters (non-blocking version).
      *
      * @param broker The MQTT broker address.
      * @param port The port number for the MQTT connection.
-     * @return true if the connection is successful, false otherwise.
+     * @param id The client ID to use for the MQTT connection.
+     * @param keep_alive The keep-alive interval for the MQTT connection.
+     * @param clean_session The clean session flag for the MQTT connection.
+     * Sends the AT+MQTTCONN command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
      */
-    bool ConnectToBroker(const char broker[], int port);
+    void ConnectToBrokerNoWait(const char broker[], int port, const char id[], uint8_t keep_alive, uint16_t clean_session);
+
+    /**
+     * @brief Connects to the MQTT broker with the specified parameters (non-blocking version, with user/pass).
+     *
+     * @param broker The MQTT broker address.
+     * @param port The port number for the MQTT connection.
+     * @param user The username for MQTT authentication.
+     * @param pass The password for MQTT authentication.
+     * @param id The client ID to use for the MQTT connection.
+     * @param keep_alive The keep-alive interval for the MQTT connection.
+     * @param clean_session The clean session flag for the MQTT connection.
+     * Sends the AT+MQTTCONN command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void ConnectToBrokerNoWait(const char broker[], int port, const char user[], const char pass[], const char id[], uint8_t keep_alive, uint16_t clean_session);
+
+    /**
+     * @brief Connects to the MQTT broker with the specified parameters (non-blocking version, simple).
+     *
+     * @param broker The MQTT broker address.
+     * @param port The port number for the MQTT connection.
+     * Sends the AT+MQTTCONN command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void ConnectToBrokerNoWait(const char broker[], int port);
 
     /**
      * @brief Disconnects from the MQTT broker.
@@ -246,6 +309,15 @@ public:
      * @return true if the disconnection is successful, false otherwise.
      */
     bool DisconnectBroker();
+
+    /**
+     * @brief Connects to the MQTT broker with the specified parameters.
+     *
+     * @param broker The MQTT broker address.
+     * @param port The port number for the MQTT connection.
+     * @return true if the connection is successful, false otherwise.
+     */
+    bool ConnectToBroker(const char broker[], int port);
 
     /**
      * @brief Subscribes to a topic with the specified quality of service (QoS) level.
@@ -398,11 +470,27 @@ public:
     bool ReleaseGPSUart();
 
     /**
+     * @brief Releases the GPS UART from the A9's CPU (non-blocking version).
+     *
+     * This function sends the AT+GPSUPGRADE command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void ReleaseGPSUartNoWait();
+
+    /**
      * @brief Checks if the current GSM module supports network settings configuration.
      *
      * @return true if network settings are supported, false otherwise.
      */
     bool SupportedNetworkSettings();
+
+    /**
+     * @brief Checks if the current GSM module supports network settings configuration (non-blocking version).
+     *
+     * Sends the AT+CREG? command without waiting for a response.
+     * You should wait 2 seconds after calling this before checking the response.
+     */
+    void SupportedNetworkSettingsNoWait();
 };
 
 #endif
