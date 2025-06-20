@@ -131,6 +131,7 @@ void detectState()
     case INIT:
         if (digitalRead(RBF_PIN) == LOW) // RBF pressed
         {
+            ServoClose();         // Close the servo to ensure it's in the initial state
             currentState = READY; // Transition to ARM state if RBF is pressed
         }
         break;
