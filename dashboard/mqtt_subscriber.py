@@ -9,7 +9,8 @@ topic = "iotready/gprs"
 
 # Function to parse the MQTT payload string into a Python dictionary
 def parse_mqtt_payload(payload):
-    pattern = (
+    # Try to parse GPS message
+    gps_pattern = (
         r"navSystem:(?P<navSystem>\d+),"
         r"numSatellites:(?P<numSatellites>\d+),"
         r"hdop:(?P<hdop>\d+),"
@@ -22,28 +23,50 @@ def parse_mqtt_payload(payload):
         r"speed:(?P<speed>-?\d+\.\d+),"
         r"course:(?P<course>-?\d+\.\d+)"
     )
-    match = re.match(pattern, payload)
-    if not match:
-        return None
-    d = match.groupdict()
-    # Convert types
-    d['navSystem'] = int(d['navSystem'])
-    d['numSatellites'] = int(d['numSatellites'])
-    d['hdop'] = int(d['hdop'])/ 10
-    d['valid'] = d['valid'] == 'true'
-    d['latitude'] = float(d['latitude'])
-    d['longitude'] = float(d['longitude'])
-    d['altitude'] = float(d['altitude'])
-    d['year'] = int(d['year'])
-    d['month'] = int(d['month'])
-    d['day'] = int(d['day'])
-    d['hour'] = int(d['hour'])
-    d['minute'] = int(d['minute'])
-    d['second'] = int(d['second'])
-    d['hundredths'] = int(d['hundredths'])
-    d['speed'] = float(d['speed'])
-    d['course'] = float(d['course'])
-    return d
+    gps_match = re.match(gps_pattern, payload)
+    if gps_match:
+        d = gps_match.groupdict()
+        d['navSystem'] = int(d['navSystem'])
+        d['numSatellites'] = int(d['numSatellites'])
+        d['hdop'] = int(d['hdop']) / 10
+        d['valid'] = d['valid'] == 'true'
+        d['latitude'] = float(d['latitude'])
+        d['longitude'] = float(d['longitude'])
+        d['altitude'] = float(d['altitude'])
+        d['year'] = int(d['year'])
+        d['month'] = int(d['month'])
+        d['day'] = int(d['day'])
+        d['hour'] = int(d['hour'])
+        d['minute'] = int(d['minute'])
+        d['second'] = int(d['second'])
+        d['hundredths'] = int(d['hundredths'])
+        d['speed'] = float(d['speed'])
+        d['course'] = float(d['course'])
+        d['type'] = 'gps'
+        return d
+
+    # Try to parse altitude, battery, state message
+    abs_pattern = r"altitude:(?P<altitude>-?\d+\.\d+),battery:(?P<battery>\d+\.\d+),state:(?P<state>\d+)"
+    abs_match = re.match(abs_pattern, payload)
+    if abs_match:
+        d = abs_match.groupdict()
+        d['altitude'] = float(d['altitude'])
+        d['battery'] = float(d['battery'])
+        d['state'] = int(d['state'])
+        d['type'] = 'alt_batt_state'
+        return d
+
+    # Try to parse temperature and pressure message
+    tp_pattern = r"temperature:(?P<temperature>-?\d+\.\d+),pressure:(?P<pressure>-?\d+\.\d+)"
+    tp_match = re.match(tp_pattern, payload)
+    if tp_match:
+        d = tp_match.groupdict()
+        d['temperature'] = float(d['temperature'])
+        d['pressure'] = float(d['pressure'])
+        d['type'] = 'temp_press'
+        return d
+
+    return None
 
 # Callback when a message is received
 def on_message(client, userdata, msg):

@@ -182,29 +182,17 @@ void puddingProcess()
     case PUDDING_WAIT_20S:
         if (now - puddingStateStart >= 20000)
         {
-            if (puddingUart.bIsReady())
-            {
-                puddingState = PUDDING_SETUP_GPS_READY;
-                puddingStateStart = now;
-            }
-            else
-            {
-                puddingState = PUDDING_WAIT_FOR_READY;
-                puddingStateStart = now;
-            }
+            puddingUart.bIsReadyNoWait();
+            puddingState = PUDDING_WAIT_FOR_READY;
+            puddingStateStart = now;
         }
         break;
     case PUDDING_WAIT_FOR_READY:
-        if (puddingUart.bIsReady())
+        if (now - puddingStateStart >= 2000)
         {
+            // After 2s, assume ready and continue, or reset if needed
+            // Optionally, you could check a flag or status here if you want to verify
             puddingState = PUDDING_SETUP_GPS_READY;
-            puddingStateStart = now;
-        }
-        else if (now - puddingStateStart >= 2000)
-        {
-            // Not ready after 2s, start reset
-            digitalWrite(GPS_EN, LOW);
-            puddingState = PUDDING_RESETTING_LOW;
             puddingStateStart = now;
         }
         break;
@@ -224,99 +212,111 @@ void puddingProcess()
         }
         break;
     case PUDDING_SETUP_GPS_READY:
-        // Step 1: Wait for bIsReady
-        if (puddingUart.bIsReady())
+        puddingUart.bIsReadyNoWait();
+        puddingState = PUDDING_SETUP_GPS_READY_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_GPS_READY_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
             puddingState = PUDDING_SETUP_GPS_UART;
             puddingStateStart = now;
         }
-        else if (now - puddingStateStart > 2000)
-        {
-            puddingState = PUDDING_ERROR;
-        }
         break;
     case PUDDING_SETUP_GPS_UART:
-        if (puddingUart.ReleaseGPSUart())
+        puddingUart.ReleaseGPSUartNoWait();
+        puddingState = PUDDING_SETUP_GPS_UART_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_GPS_UART_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
             puddingGPSInit();
             Serial.println("GPS Status S: OK");
             puddingState = PUDDING_SETUP_MQTT_READY;
             puddingStateStart = now;
         }
-        else if (now - puddingStateStart > 2000)
-        {
-            Serial.println("GPS Status S: FAIL");
-            puddingState = PUDDING_ERROR;
-        }
         break;
     case PUDDING_SETUP_MQTT_READY:
-        if (puddingUart.bIsReady())
+        puddingUart.bIsReadyNoWait();
+        puddingState = PUDDING_SETUP_MQTT_READY_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_MQTT_READY_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
             puddingState = PUDDING_SETUP_MQTT_NET;
             puddingStateStart = now;
         }
-        else if (now - puddingStateStart > 2000)
-        {
-            puddingState = PUDDING_ERROR;
-        }
         break;
     case PUDDING_SETUP_MQTT_NET:
-        if (puddingUart.SupportedNetworkSettings())
+        puddingUart.SupportedNetworkSettingsNoWait();
+        puddingState = PUDDING_SETUP_MQTT_NET_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_MQTT_NET_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
-            puddingUart.ReadCCID();
+            puddingUart.ReadCCIDNoWait();
+            puddingState = PUDDING_SETUP_MQTT_CCID_WAIT;
+            puddingStateStart = now;
+        }
+        break;
+    case PUDDING_SETUP_MQTT_CCID_WAIT:
+        if (now - puddingStateStart >= 2000)
+        {
             puddingState = PUDDING_SETUP_MQTT_GPRS;
             puddingStateStart = now;
         }
-        else if (now - puddingStateStart > 2000)
-        {
-            puddingState = PUDDING_ERROR;
-        }
         break;
     case PUDDING_SETUP_MQTT_GPRS:
-        if (puddingUart.AttachToGPRS())
+        puddingUart.AttachToGPRSNoWait();
+        puddingState = PUDDING_SETUP_MQTT_GPRS_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_MQTT_GPRS_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
             puddingState = PUDDING_SETUP_MQTT_APN;
             puddingStateStart = now;
         }
-        else if (now - puddingStateStart > 2000)
-        {
-            puddingState = PUDDING_ERROR;
-        }
         break;
     case PUDDING_SETUP_MQTT_APN:
-        if (puddingUart.SetAPN("IP", "internet"))
+        puddingUart.SetAPNNoWait("IP", "internet");
+        puddingState = PUDDING_SETUP_MQTT_APN_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_MQTT_APN_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
             puddingState = PUDDING_SETUP_MQTT_PDP;
             puddingStateStart = now;
         }
-        else if (now - puddingStateStart > 2000)
-        {
-            puddingState = PUDDING_ERROR;
-        }
         break;
     case PUDDING_SETUP_MQTT_PDP:
-        if (puddingUart.ActivatePDP())
+        puddingUart.ActivatePDPNoWait();
+        puddingState = PUDDING_SETUP_MQTT_PDP_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_MQTT_PDP_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
             puddingState = PUDDING_SETUP_MQTT_BROKER;
             puddingStateStart = now;
         }
-        else if (now - puddingStateStart > 2000)
-        {
-            puddingState = PUDDING_ERROR;
-        }
         break;
     case PUDDING_SETUP_MQTT_BROKER:
-        if (puddingUart.ConnectToBroker(BROKER_NAME, PORT, UNIQUE_ID, KEEP_ALIVE, CLEAN_SEASSION))
+        puddingUart.ConnectToBrokerNoWait(BROKER_NAME, PORT, UNIQUE_ID, KEEP_ALIVE, CLEAN_SEASSION);
+        puddingState = PUDDING_SETUP_MQTT_BROKER_WAIT;
+        puddingStateStart = now;
+        break;
+    case PUDDING_SETUP_MQTT_BROKER_WAIT:
+        if (now - puddingStateStart >= 2000)
         {
             puddingUart.PublishToTopic(PUB_TOPIC, "Hello IoT Started");
             Serial.println("MQTT Status: OK");
             puddingStatus = true;
             puddingState = PUDDING_SETUP_DONE;
-        }
-        else if (now - puddingStateStart > 2000)
-        {
-            Serial.println("MQTT Status: FAIL");
-            puddingState = PUDDING_ERROR;
         }
         break;
     case PUDDING_SETUP_DONE:

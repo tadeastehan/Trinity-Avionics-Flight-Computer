@@ -131,6 +131,7 @@ void detectState()
     case INIT:
         if (digitalRead(RBF_PIN) == LOW) // RBF pressed
         {
+            ServoClose();         // Close the servo to ensure it's in the initial state
             currentState = READY; // Transition to ARM state if RBF is pressed
         }
         break;
@@ -241,6 +242,23 @@ void setup()
     avgAltitude.begin();
 }
 
+// Timers for MQTT messages
+unsigned long gpsMQTTLastSent = 0;
+unsigned long altBattStateLastSent = 0;
+unsigned long tempPressLastSent = 0;
+
+// Helper function to check if in ASCENT or DEPLOY
+bool isAscentOrDeploy()
+{
+    return currentState == ASCENT || currentState == DEPLOY;
+}
+
+// Helper function to check if in ASCENT, DEPLOY, or DESCENT
+bool isAscentDeployDescent()
+{
+    return currentState == ASCENT || currentState == DEPLOY || currentState == DESCENT;
+}
+
 void loop()
 {
     updateBMP384();      // Update BMP384 sensor data
@@ -251,9 +269,12 @@ void loop()
     update(); // Update GPS and battery voltage
     puddingProcess();
 
-    if (millis() - MQTTUpdateTimeLast >= MQTT_UPDATE_INTERVAL)
+    unsigned long now = millis();
+
+    // 1. GPS MQTT message every 5s except ASCENT, DEPLOY
+    if (!isAscentOrDeploy() && now - gpsMQTTLastSent >= 5000)
     {
-        MQTTUpdateTimeLast = millis(); // Update the last MQTT update time
+        gpsMQTTLastSent = now;
         nmeaData gps = getGPSdata();
         char mqttPayload[300];
         snprintf(mqttPayload, sizeof(mqttPayload),
@@ -277,46 +298,68 @@ void loop()
         puddingUart.PublishToTopicNoWait(PUB_TOPIC, mqttPayload);
     }
 
-    if (millis() - SerialUpdateTimeLast >= SERIAL_UPDATE_INTERVAL)
+    // 2. Altitude, battery voltage, state
+    unsigned long altBattStateInterval = isAscentDeployDescent() ? 500 : 1000; // 500ms or 1s
+    if (now - altBattStateLastSent >= altBattStateInterval)
     {
-        SerialUpdateTimeLast = millis(); // Update the last serial update time
-
-        nmeaData gps = getGPSdata();
-        Serial.println("GPS Data:");
-        Serial.print("  navSystem: ");
-        Serial.println(gps.navSystem);
-        Serial.print("  numSatellites: ");
-        Serial.println(gps.numSatellites);
-        Serial.print("  hdop: ");
-        Serial.println(gps.hdop);
-        Serial.print("  valid: ");
-        Serial.println(gps.valid ? "true" : "false");
-        Serial.print("  latitude: ");
-        Serial.println(gps.latitude / 1000000.0, 6);
-        Serial.print("  longitude: ");
-        Serial.println(gps.longitude / 1000000.0, 6);
-        Serial.print("  altitude: ");
-        Serial.print(gps.altitude / 1000.0, 3);
-        Serial.println(" m");
-        Serial.print("  date: ");
-        Serial.print(gps.year);
-        Serial.print('-');
-        Serial.print(gps.month);
-        Serial.print('-');
-        Serial.println(gps.day);
-        Serial.print("  time: ");
-        Serial.print(gps.hour);
-        Serial.print(':');
-        Serial.print(gps.minute);
-        Serial.print(':');
-        Serial.print(gps.second);
-        Serial.print('.');
-        Serial.println(gps.hundredths);
-        Serial.print("  speed: ");
-        Serial.print(gps.speed / 1000.0, 3);
-        Serial.println(" knots");
-        Serial.print("  course: ");
-        Serial.print(gps.course / 1000.0, 3);
-        Serial.println(" deg");
+        altBattStateLastSent = now;
+        float altitude = getBMPData().altitude;
+        float battery = getBatteryVoltage();
+        char msg[128];
+        snprintf(msg, sizeof(msg), "altitude:%.2f,battery:%.2f,state:%d", altitude, battery, currentState);
+        puddingUart.PublishToTopicNoWait(PUB_TOPIC, msg);
     }
+
+    // 3. Temperature and pressure every 10s except ASCENT, DEPLOY
+    if (!isAscentOrDeploy() && now - tempPressLastSent >= 10000)
+    {
+        tempPressLastSent = now;
+        BMPData bmp = getBMPData();
+        char msg[128];
+        snprintf(msg, sizeof(msg), "temperature:%.2f,pressure:%.2f", bmp.temperature, bmp.pressure);
+        puddingUart.PublishToTopicNoWait(PUB_TOPIC, msg);
+    }
+
+    // if (millis() - SerialUpdateTimeLast >= SERIAL_UPDATE_INTERVAL)
+    // {
+    //     SerialUpdateTimeLast = millis(); // Update the last serial update time
+
+    //     nmeaData gps = getGPSdata();
+    //     Serial.println("GPS Data:");
+    //     Serial.print("  navSystem: ");
+    //     Serial.println(gps.navSystem);
+    //     Serial.print("  numSatellites: ");
+    //     Serial.println(gps.numSatellites);
+    //     Serial.print("  hdop: ");
+    //     Serial.println(gps.hdop);
+    //     Serial.print("  valid: ");
+    //     Serial.println(gps.valid ? "true" : "false");
+    //     Serial.print("  latitude: ");
+    //     Serial.println(gps.latitude / 1000000.0, 6);
+    //     Serial.print("  longitude: ");
+    //     Serial.println(gps.longitude / 1000000.0, 6);
+    //     Serial.print("  altitude: ");
+    //     Serial.print(gps.altitude / 1000.0, 3);
+    //     Serial.println(" m");
+    //     Serial.print("  date: ");
+    //     Serial.print(gps.year);
+    //     Serial.print('-');
+    //     Serial.print(gps.month);
+    //     Serial.print('-');
+    //     Serial.println(gps.day);
+    //     Serial.print("  time: ");
+    //     Serial.print(gps.hour);
+    //     Serial.print(':');
+    //     Serial.print(gps.minute);
+    //     Serial.print(':');
+    //     Serial.print(gps.second);
+    //     Serial.print('.');
+    //     Serial.println(gps.hundredths);
+    //     Serial.print("  speed: ");
+    //     Serial.print(gps.speed / 1000.0, 3);
+    //     Serial.println(" knots");
+    //     Serial.print("  course: ");
+    //     Serial.print(gps.course / 1000.0, 3);
+    //     Serial.println(" deg");
+    // }
 }

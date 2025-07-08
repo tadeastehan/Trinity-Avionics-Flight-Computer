@@ -4,3 +4,4 @@ dash-leaflet==1.1.2
 dash-daq==0.6.0
 segno==1.6.6
 pandas==2.3.0 
+paho-mqtt==2.1.0

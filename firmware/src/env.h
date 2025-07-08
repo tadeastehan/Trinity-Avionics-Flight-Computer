@@ -19,8 +19,8 @@
 
 #define SERVO_PIN 2 // GPIO2
 
-#define SERVO_OPENED_POSITION 19
-#define SERVO_CLOSED_POSITION 95
+#define SERVO_OPENED_POSITION 10
+#define SERVO_CLOSED_POSITION 57
 
 #define LAUCH_THRESHOLD 5   // Minimum altitude change to detect launch
 #define DESCENT_THRESHOLD 3 // Threshold to detect descent
