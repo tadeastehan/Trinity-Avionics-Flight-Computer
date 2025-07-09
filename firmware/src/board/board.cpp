@@ -49,8 +49,9 @@ void setupRGBLight()
     FastLED.addLeds<LED_TYPE, LED_PIN, COLOR_ORDER>(leds, NUM_LEDS).setCorrection(TypicalLEDStrip);
 }
 
-static unsigned long lastBuzzTime = 0;
-bool buzzerState = LOW; // Initial state of the buzzer
+static unsigned long buzzStartTime = 0;
+static unsigned long buzzDuration = 0;
+static bool buzzActive = false;
 
 float batteryVoltage = 0.0; // Variable to store battery voltage
 
@@ -62,7 +63,7 @@ void setupBoard()
 
     // Initialize Buzzer pin
     pinMode(BUZZER_PIN, OUTPUT);
-    digitalWrite(BUZZER_PIN, buzzerState); // Turn off the buzzer initially
+    digitalWrite(BUZZER_PIN, LOW); // Turn off the buzzer initially
     Serial.println("Buzzer pin initialized.");
 
     // Initialize Battery pin
@@ -78,22 +79,56 @@ void setupBoard()
     Serial.println("Servo initialized.");
 }
 
-void buzz()
+// Start buzzing for a given duration (non-blocking)
+void buzz(int duration)
 {
-    unsigned long currentTime = millis();
-    // Buzz every second
-    if (currentTime - lastBuzzTime >= BUZZING_INTERVAL)
+    buzzStartTime = millis();
+    buzzDuration = duration;
+    buzzActive = true;
+    digitalWrite(BUZZER_PIN, HIGH);
+}
+
+// Enable or disable interval buzzing (interval is always BUZZING_INTERVAL)
+static bool intervalBuzzEnabled = false;
+
+// Check if the buzzer should be turned off or handle interval buzzing
+void checkBuzzState()
+{
+    static unsigned long lastBuzzToggle = 0;
+    static bool buzzOn = false;
+
+    // Handle interval buzzing
+    if (intervalBuzzEnabled)
     {
-        lastBuzzTime = currentTime;
-        buzzerState = !buzzerState;            // Toggle buzzer state
-        digitalWrite(BUZZER_PIN, buzzerState); // Set the buzzer state
+        if (!buzzActive && !buzzOn && (millis() - lastBuzzToggle >= BUZZING_INTERVAL))
+        {
+            lastBuzzToggle = millis();
+            buzz(BUZZING_INTERVAL / 2); // Buzz ON for half the interval
+            buzzOn = true;
+        }
+        if (buzzOn && !buzzActive)
+        {
+            // Buzz finished, turn off and wait for next interval
+            buzzOn = false;
+        }
+    }
+
+    // Handle single buzz
+    if (buzzActive && (millis() - buzzStartTime >= buzzDuration))
+    {
+        digitalWrite(BUZZER_PIN, LOW);
+        buzzActive = false;
     }
 }
 
-void buzzOff()
+void intervalBuzzEnable()
 {
-    buzzerState = LOW; // Turn off the buzzer
-    digitalWrite(BUZZER_PIN, buzzerState);
+    intervalBuzzEnabled = true;
+}
+
+void intervalBuzzDisable()
+{
+    intervalBuzzEnabled = false;
 }
 
 void updateBatteryVoltage()

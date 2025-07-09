@@ -6,9 +6,14 @@
 void setupBoard();
 
 // Toggles the buzzer state every second
-void buzz();
-// Turn off the buzzer
-void buzzOff();
+// Start buzzing for a given duration (non-blocking)
+void buzz(int duration);
+// Check if the buzzer should be turned off
+void checkBuzzState();
+// Enable interval buzzing (non-blocking, uses BUZZING_INTERVAL)
+void intervalBuzzEnable();
+// Disable interval buzzing
+void intervalBuzzDisable();
 
 // Updates the battery voltage reading
 void updateBatteryVoltage();
