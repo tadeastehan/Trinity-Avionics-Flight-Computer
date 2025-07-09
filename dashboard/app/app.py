@@ -150,35 +150,60 @@ map_div = html.Div(
             clearable=False,
         ),
         html.Div(
+            id="map-bottom-right-controls",
+            className="map-bottom-right-controls",
             children=[
-            html.Button(
-                id='teleport-rocket',
-                title='Go to Rocket',
-                children=html.Img(src='assets/icons/rocket-outline.svg'),
-                n_clicks=0,
-            ),
-            html.Button(
-                id='teleport-home',
-                title='Go to Start',
-                children=html.Img(src='assets/icons/home-outline.svg'),
-                n_clicks=0,
-            ),
-             html.Button(
-                id='set-marker-button',
-                title='Set Home Position',
-                children=html.Img(src='assets/icons/home-edit-outline.svg'),
-                n_clicks=0,
-            ),
-             html.Button(
-                id='share-rocket-position',
-                title='Share Rocket Position',
-                children=html.Img(src='assets/icons/qrcode.svg'),
-                n_clicks=0,
-            ),
-        ]),
-        html.Div(id="placeholder")
+                html.Button(
+                    id='teleport-rocket',
+                    title='Go to Rocket',
+                    children=html.Img(src='assets/icons/rocket-outline.svg'),
+                    n_clicks=0,
+                ),
+                html.Button(
+                    id='teleport-home',
+                    title='Go to Start',
+                    children=html.Img(src='assets/icons/home-outline.svg'),
+                    n_clicks=0,
+                ),
+                html.Button(
+                    id='set-marker-button',
+                    title='Set Home Position',
+                    children=html.Img(src='assets/icons/home-edit-outline.svg'),
+                    n_clicks=0,
+                ),
+                html.Button(
+                    id='share-rocket-position',
+                    title='Share Rocket Position',
+                    children=html.Img(src='assets/icons/qrcode.svg'),
+                    n_clicks=0,
+                ),
+            ]
+        ),
+        html.Div(id="placeholder"),
+        html.Div(
+            id="map-bottom-left-info",
+            className="map-bottom-left-info",
+            children=[
+                html.Div([
+                    html.Img(src="assets/icons/satellite-variant.svg"),
+                    html.Span(id="num-satellites-value", style={"fontSize": "20px", "marginLeft": "6px", "color": "#afaca5"}),
+                ], style={"display": "flex", "alignItems": "center"}),
+                html.Div([
+                    html.Img(src="assets/icons/signal.svg"),
+                    html.Span(id="hdop-value", style={"fontSize": "20px", "marginLeft": "6px", "color": "#afaca5"}),
+                ], style={"display": "flex", "alignItems": "center"}),
+                html.Div([
+                    html.Img(src="assets/icons/check-decagram-outline.svg"),
+                    html.Span(
+                        id="fix-status-value",
+                        style={"fontSize": "20px", "marginLeft": "6px", "fontWeight": "bold"}
+                    ),
+                ], style={"display": "flex", "alignItems": "center"}),
+            ]
+        )
     ]
 )
+
 
 altitude_graph = html.Div(
     className="item4",
@@ -525,9 +550,16 @@ def update_graph_outputs(selected_file, selected_columns, streamed, n_intervals)
         pass
     return fig, current_val_string, max_val_string, label, max_label, battery_val, *tuple({"background-color": color} for color in stages)
 
-# Callback for map
+
+# Callback for map and bottom left info
 @app.callback(
-    Output('map', 'children'),
+    [
+        Output('map', 'children'),
+        Output('num-satellites-value', 'children'),
+        Output('hdop-value', 'children'),
+        Output('fix-status-value', 'children'),
+        Output('fix-status-value', 'style'),
+    ],
     [
         Input('file-dropdown', 'value'),
         Input('data-column-dropdown', 'value'),
@@ -555,11 +587,28 @@ def update_map_outputs(selected_file, selected_column, streamed, n_intervals):
     time_col = None
     map_children = []
     rocket_marker_position = get_rocket_position()
+    num_sat = ''
+    hdop = ''
+    fix = ''
+    fix_style = {"fontSize": "20px", "marginLeft": "6px", "fontWeight": "bold", "color": "#ff4444"}
     try:
         if not selected_file or not selected_column:
-            return map_children
+            return map_children, num_sat, hdop, fix, fix_style
         csv_path = os.path.join(DATA_DIR, selected_file)
         df = pd.read_csv(csv_path)
+        # Bottom left info logic
+        if not df.empty:
+            if 'NumSatellites[x]' in df.columns:
+                num_sat = int(df['NumSatellites[x]'].iloc[-1])
+            if 'HDOP[x]' in df.columns:
+                hdop = float(df['HDOP[x]'].iloc[-1])
+            if 'valid[x]' in df.columns:
+                v = int(df['valid[x]'].iloc[-1])
+                if v == 1:
+                    fix = 'FIX'
+                    fix_style = {"fontSize": "20px", "marginLeft": "6px", "fontWeight": "bold", "color": "#00e676"}
+                else:
+                    fix = 'NO FIX'
         for col in df.columns:
             if 'latitude' in col.lower():
                 lat_col = col
@@ -649,7 +698,7 @@ def update_map_outputs(selected_file, selected_column, streamed, n_intervals):
             ]
     except Exception:
         pass
-    return map_children
+    return map_children, num_sat, hdop, fix, fix_style
 
 @app.callback(
     Output('map', 'center'),
@@ -706,6 +755,7 @@ def update_console_log_fancy(selected_file, n_intervals):
             return f"No data rows."
     except Exception as e:
         return f"Error reading file: {e}"
+
 
 if __name__ == '__main__': 
     app.run(debug=True, port=8050)
