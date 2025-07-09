@@ -6,6 +6,8 @@
 #include <SPI.h>
 #include "SdFat.h"
 
+#include "board/board.h"
+
 #include <env.h>
 
 // Pudding dev module
@@ -175,6 +177,7 @@ void puddingProcess()
         if (!SDCardInit())
         {
             Serial.println("SD Card init failed, continuing without SD card.");
+            showRGBColor(255, 165, 0); // Show orange color on RGB light
         }
         puddingState = PUDDING_WAIT_20S;
         puddingStateStart = now;

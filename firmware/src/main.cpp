@@ -84,6 +84,11 @@ void update()
     {
         BatteryVoltageUpdateTimeLast = millis(); // Update the last battery voltage update time
         updateBatteryVoltage();                  // Update battery voltage
+        float battery = getBatteryVoltage();
+        if (battery <= 7.50 && (currentState == INIT || currentState == READY || currentState == GROUND || currentState == ARM))
+        {
+            showRGBColor(255, 0, 255); // Show red color on RGB light
+        }
     }
 }
 
@@ -229,16 +234,20 @@ void setup()
     Serial.begin(115200);
     delay(2000);
 
+    setupBoard(); // Initialize board pins and peripherals
+
     if (QWIICsetup())
     {
         Serial.println("QWIIC: OK");
+        showRGBColor(0, 255, 0); // Show green color on RGB light
     }
     else
     {
         Serial.println("QWIIC: FAIL");
+        showRGBColor(255, 0, 0); // Show red color on RGB light
     }
     puddingNonBlockingInit(); // Non-blocking pudding init
-    setupBoard();             // Initialize board pins and peripherals
+
     avgAltitude.begin();
 }
 
@@ -268,6 +277,8 @@ void loop()
 
     update(); // Update GPS and battery voltage
     puddingProcess();
+
+    checkRGBState(); // Check if the RGB LED should be cleared
 
     unsigned long now = millis();
 

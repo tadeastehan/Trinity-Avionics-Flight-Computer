@@ -21,3 +21,14 @@ void ServoSetup(); // Call in setup() to initialize servo
 void ServoOpen(); // Call to open the servo
 // Close servo
 void ServoClose(); // Call to close the servo
+
+void setupRGBLight(); // Call in setup() to initialize RGB light
+
+// Updates the RGB light state and records the time of the last call
+void showRGBColor(uint8_t red, uint8_t green, uint8_t blue, uint8_t brightness = 255);
+
+// Clear the RGB light state
+void clearRGBLight(); // Call to clear the RGB light state
+
+// Checks if the RGB LED should be cleared after 5 seconds
+void checkRGBState();
