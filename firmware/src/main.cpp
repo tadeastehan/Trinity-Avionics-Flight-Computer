@@ -84,6 +84,11 @@ void update()
     {
         BatteryVoltageUpdateTimeLast = millis(); // Update the last battery voltage update time
         updateBatteryVoltage();                  // Update battery voltage
+        float battery = getBatteryVoltage();
+        if (battery <= 7.50 && (currentState == INIT || currentState == READY || currentState == GROUND || currentState == ARM))
+        {
+            showRGBColor(255, 0, 255); // Show red color on RGB light
+        }
     }
 }
 
@@ -132,12 +137,14 @@ void detectState()
         if (digitalRead(RBF_PIN) == LOW) // RBF pressed
         {
             ServoClose();         // Close the servo to ensure it's in the initial state
+            buzz(200);            // Buzz for 200 ms when RBF is inserted
             currentState = READY; // Transition to ARM state if RBF is pressed
         }
         break;
     case READY:
         if (digitalRead(RBF_PIN) == HIGH) // RBF released
         {
+            buzz(200);             // Buzz for 200 ms when RBF is pulled out
             currentState = GROUND; // Transition to ARM state if RBF is released
         }
         break;
@@ -181,7 +188,8 @@ void detectState()
         break;
     case DESCENT:
         avgAltitude_result = avgAltitude.reading((int)getBMPData().altitude);
-        buzz();          // Activate buzzer during descent
+        // Activate buzzer in intervals during descent
+        intervalBuzzEnable();
         SDCardLogging(); // Log data to SD card
         descentLoopCounter++;
         if (avgAltitude_result < minAltitude)
@@ -213,9 +221,10 @@ void detectState()
     case LANDED:
         SDCardLogging(); // Log data to SD card
         // In LANDED state, you can perform any final actions or wait for a reset
-        if (digitalRead(RBF_PIN) == HIGH) // RBF released
+        if (digitalRead(RBF_PIN) == LOW) // RBF released
         {
-            buzz(); // Activate buzzer
+            // Activate buzzer in intervals during LANDED
+            intervalBuzzDisable(); // Disable interval buzzing
         }
         break;
 
@@ -229,16 +238,20 @@ void setup()
     Serial.begin(115200);
     delay(2000);
 
+    setupBoard(); // Initialize board pins and peripherals
+
     if (QWIICsetup())
     {
         Serial.println("QWIIC: OK");
+        showRGBColor(0, 255, 0); // Show green color on RGB light
     }
     else
     {
         Serial.println("QWIIC: FAIL");
+        showRGBColor(255, 0, 0); // Show red color on RGB light
     }
     puddingNonBlockingInit(); // Non-blocking pudding init
-    setupBoard();             // Initialize board pins and peripherals
+
     avgAltitude.begin();
 }
 
@@ -268,6 +281,9 @@ void loop()
 
     update(); // Update GPS and battery voltage
     puddingProcess();
+
+    checkRGBState();  // Check if the RGB LED should be cleared
+    checkBuzzState(); // Check if the buzzer should be turned off
 
     unsigned long now = millis();
 
