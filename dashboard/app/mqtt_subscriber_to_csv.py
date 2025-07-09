@@ -29,7 +29,9 @@ csv_file, csv_file_name = get_new_flight_filename()
 # Define CSV headers as requested, with Time [ms] first
 CSV_HEADERS = [
     'Time [ms]',
-    'Altitude [m]', 'Latitude [°]', 'Longitude [°]', 'Pressure[hPa]', 'Temp[°C]',
+    'Altitude [m]', 'Latitude [°]', 'Longitude [°]',
+    'NumSatellites[x]', 'HDOP[x]', 'valid[x]',
+    'Pressure[hPa]', 'Temp[°C]',
     'Battery[V]',
     'gX[°]', 'gY[°]', 'gZ[°]', 'acX[ms^2]', 'acY[ms^2]', 'acZ[ms^2]', 'State[x]'
 ]
@@ -65,10 +67,18 @@ def parse_mqtt_payload(payload):
     gps_match = re.match(gps_pattern, payload)
     if gps_match:
         d = gps_match.groupdict()
+        valid_val = d.get('valid', '')
+        if valid_val == 'true':
+            valid_val = '1'
+        elif valid_val == 'false':
+            valid_val = '0'
         return {
             'AltitudeGPS[m]': d.get('gps_altitude', ''),
             'Latitude [°]': d.get('latitude', ''),
             'Longitude [°]': d.get('longitude', ''),
+            'NumSatellites[x]': d.get('numSatellites', ''),
+            'HDOP[x]': d.get('hdop', ''),
+            'valid[x]': valid_val,
         }
     tp_pattern = r"temperature:(?P<temperature>-?\d+\.\d+),pressure:(?P<pressure>-?\d+\.\d+)"
     tp_match = re.match(tp_pattern, payload)
