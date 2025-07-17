@@ -49,6 +49,9 @@ The Trinity avionics system is a modular hub for sensor data acquisition, teleme
 
 ## Dashboard Features
 
+<p align="center">
+  <img src="docs/dashboard.png" alt="Dashboard"/>
+</p>
 Our telemetry dashboard was created using Dash in Python. Key features include:
 
 - Real-time telemetry graphs and system state
