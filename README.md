@@ -1,5 +1,9 @@
 # Trinity Avionics Flight Computer
 
+<p align="center">
+  <img src="docs/flight-computer-electronics.gif" alt="Flight Computer Electronics" width="400"/>
+  <img src="docs/flight-computer-case.gif" alt="Flight Computer 3D printed white case" width="400"/>
+</p>
 This repository contains the design and implementation of the avionics flight computer used in our high school rocket, _Trinity_, which competed in the 2025 Czech Rocket Challenge. It includes hardware schematics, firmware, test reports, a telemetry dashboard, and more.
 
 The Trinity avionics system is a modular hub for sensor data acquisition, telemetry, and flight control. It connects a set of QWIIC-compatible sensors via I2C, handles dual serial communication with the A9G GSM+GPS module, and logs data both locally (SD card) and remotely (MQTT via GPRS).
@@ -61,7 +65,7 @@ We conducted detailed capacity testing of the flight battery to verify its perfo
 
 All avionics components are enclosed in a custom 3D-printed case made from LW-PLA to reduce weight. The main enclosure securely houses the buzzer, GPS antenna, GPRS antenna, user button, two QWIIC sensors, and the mainboard. The battery is inserted from the top, allowing for quick replacement or inspection. The lightweight and modular design makes it easy to access and service individual components while keeping the system compact and flight-ready.
 
-<div style="display: flex; justify-content: center; align-items: center; gap: 10px;">
-  <img src="docs/flight-computer-electronics.jpg" alt="Flight Computer Electronics" style="max-width: 50%; height: auto;">
-  <img src="docs/flight-computer-case.jpg" alt="Flight Computer 3D printed white case" style="max-width: 50%; height: auto;">
-</div>
+<p align="center">
+  <img src="docs/flight-computer-electronics.jpg" alt="Flight Computer Electronics" width="400"/>
+  <img src="docs/flight-computer-case.jpg" alt="Flight Computer 3D printed white case" width="400"/>
+</p>
